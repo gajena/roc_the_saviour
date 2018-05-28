@@ -8,7 +8,6 @@
 #ifndef KALMAN_H_
 #define KALMAN_H_
 
-
 #include <Eigen/Core>
 #include <Eigen/Dense>
 
@@ -24,18 +23,31 @@
 using namespace std;
 using namespace Eigen;
 
-namespace HMDETECTION{
-class EKF{
-public:
+namespace HMDETECTION
+{
+class EKF
+{
+  public:
 	EKF(ros::NodeHandle nh);
 	void subscriber();
-	enum sensorState{WAITING=0, INITIALIZED=1, ACQUIRED=2};
-	enum ekfState{EKF_WAITING=0, EKF_INITIALIZED=1, EKF_PREDICTION=2, EKF_UPDATE=3};
+	enum sensorState
+	{
+		WAITING = 0,
+		INITIALIZED = 1,
+		ACQUIRED = 2
+	};
+	enum ekfState
+	{
+		EKF_WAITING = 0,
+		EKF_INITIALIZED = 1,
+		EKF_PREDICTION = 2,
+		EKF_UPDATE = 3
+	};
 
-private:
-	void imuCallback(const sensor_msgs::Imu::ConstPtr& msg);
-	void magCallback(const sensor_msgs::MagneticField::ConstPtr& msg);
-	void sonarCallback(const sensor_msgs::Range::ConstPtr& msg);
+  private:
+	void imuCallback(const sensor_msgs::Imu::ConstPtr &msg);
+	void magCallback(const sensor_msgs::MagneticField::ConstPtr &msg);
+	void sonarCallback(const sensor_msgs::Range::ConstPtr &msg);
 	void ekfInitialize();
 	void ekfPrediction();
 	void ekfUpdate();
@@ -65,6 +77,6 @@ private:
 	ros::Time time;
 };
 
-}
+} // namespace HMDETECTION
 
 #endif /* KALMAN_H_ */

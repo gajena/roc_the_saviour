@@ -28,7 +28,7 @@ include_directories(include
                     ${Eigen_INCLUDE_DIRS})
 
 ## Declare a cpp executable
-add_executable(main src/main.cpp src/ekf.cpp src/sonar.cpp)
+add_executable(main src/main.cpp src/ekf.cpp src/lidar.cpp)
 target_link_libraries(main
     ${catkin_LIBRARIES}
     ${OpenCV_LIBRARIES}

@@ -2,11 +2,11 @@
 #include <boost/thread.hpp>
 
 #include "kalman.h"
-int main(int argc, char **argv){
+int main(int argc, char **argv)
+{
 
 	ros::init(argc, argv, "detection");
 	ros::NodeHandle nh;
-
 
 	//call ekf for height and orientation estimation
 	HMDETECTION::EKF ekf(nh);
@@ -14,7 +14,8 @@ int main(int argc, char **argv){
 
 	ros::Rate loopFreq(100);
 
-	while (ros::ok()){
+	while (ros::ok())
+	{
 		loopFreq.sleep();
 	}
 

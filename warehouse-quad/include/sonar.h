@@ -1,12 +1,12 @@
 /*
- * sonar.h
+ * lidar.h
  *
  *  Created on: 19-Jun-2017
  *      Author: krissh
  */
 
-#ifndef LIDAR_IMU_INCLUDE_SONAR_H_
-#define LIDAR_IMU_INCLUDE_SONAR_H_
+#ifndef LIDAR_IMU_INCLUDE_lidar_H_
+#define LIDAR_IMU_INCLUDE_lidar_H_
 
 #include "ros/ros.h"
 #include <iostream>
@@ -16,22 +16,22 @@
 using namespace Eigen;
 using namespace std;
 
-namespace HMDETECTION{
-class sonar{
-	public:
-		sonar();
-		double getSonarFilteredData(double distance);
+namespace HMDETECTION
+{
+class lidar
+{
+  public:
+	lidar();
+	double getlidarFilteredData(double distance);
 
-	private:
-		double sonarVal;
-		double threshold;
-		double set_count;
-		VectorXf sonar_set;
-		int first_val_check;
-		int no_sonar_data;
+  private:
+	double lidarVal;
+	double threshold;
+	double set_count;
+	VectorXf lidar_set;
+	int first_val_check;
+	int no_lidar_data;
 };
-}
+} // namespace HMDETECTION
 
-
-
-#endif /* LIDAR_IMU_INCLUDE_SONAR_H_ */
+#endif /* LIDAR_IMU_INCLUDE_lidar_H_ */
