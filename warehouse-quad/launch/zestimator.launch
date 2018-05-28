@@ -19,13 +19,10 @@
                 <arg name="log_output" value="$(arg log_output)" />
         </include>
 
+	<!-- px4flow -->
+	<include file="$(find tfmini_ros)/launch/tfmini.launch" />
 
-	<include file="$(find tfmini_ros)/launch/tfmini.launch"/> 
-
-       
-    
-	<!-- estimator -->
-	<node name="distance_sensor" pkg="warehouse_quad" type="distance_sensor" /> 
+	<node name="main" pkg="warehouse_quad" type="main" /> 
 	
 
 

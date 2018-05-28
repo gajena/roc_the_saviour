@@ -7,17 +7,17 @@ find_package(catkin REQUIRED COMPONENTS
   sensor_msgs
   std_msgs
   cmake_modules
-  px_comm
+
 
 )
 
 find_package(Eigen REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(Boost REQUIRED COMPONENTS system)
-find_package(PCL REQUIRED COMPONENTS common io)
+#find_package(PCL REQUIRED COMPONENTS common io)
 
 catkin_package(
-   DEPENDS OpenCV Boost Eigen PCL
+   DEPENDS OpenCV Boost Eigen
   INCLUDE_DIRS include
    CATKIN_DEPENDS roscpp
 )
@@ -25,13 +25,11 @@ include_directories(include
 					${Boost_INCLUDE_DIRS}
                     ${catkin_INCLUDE_DIRS}
                     ${OpenCV_INCLUDE_DIRS}
-                    ${Eigen_INCLUDE_DIRS}
-                    ${PCL_INCLUDE_DIRS})
+                    ${Eigen_INCLUDE_DIRS})
 
 ## Declare a cpp executable
-add_executable(distance_sensor src/distance_sensor.cpp )
-target_link_libraries(distance_sensor
+add_executable(main src/main.cpp src/ekf.cpp src/sonar.cpp)
+target_link_libraries(main
     ${catkin_LIBRARIES}
-    ${PCL_LIBRARIES}
     ${OpenCV_LIBRARIES}
     ${Boost_LIBRARIES})
