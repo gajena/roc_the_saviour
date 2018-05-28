@@ -18,7 +18,7 @@
 #include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/PoseStamped.h>
 
-#include "sonar.h"
+#include "lidar.h"
 
 using namespace std;
 using namespace Eigen;
@@ -47,11 +47,11 @@ class EKF
   private:
 	void imuCallback(const sensor_msgs::Imu::ConstPtr &msg);
 	void magCallback(const sensor_msgs::MagneticField::ConstPtr &msg);
-	void sonarCallback(const sensor_msgs::Range::ConstPtr &msg);
+	void lidarCallback(const sensor_msgs::Range::ConstPtr &msg);
 	void ekfInitialize();
 	void ekfPrediction();
 	void ekfUpdate();
-	void ekfUpdateHeight(double sonarDistance);
+	void ekfUpdateHeight(double lidarDistance);
 
 	ros::Publisher anglesPub, accelefPub, posePub;
 
@@ -64,7 +64,7 @@ class EKF
 	VectorXd X, X_;
 	MatrixXd sigma, sigma_;
 
-	sensorState imuState, magState, sonarState;
+	sensorState imuState, magState, lidarState;
 	ekfState ekfCurrentState;
 
 	int imuSeq, magSeq;
@@ -72,7 +72,7 @@ class EKF
 	double currentImutime, previousImutime, deltaImutime, initialtime;
 
 	double roll, pitch, yaw;
-	sonar sonarVal;
+	lidar lidarVal;
 
 	ros::Time time;
 };

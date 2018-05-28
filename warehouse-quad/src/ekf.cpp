@@ -7,7 +7,7 @@ using namespace std;
 namespace HMDETECTION
 {
 
-EKF::EKF(ros::NodeHandle nh) : currentImutime(0.0), previousImutime(0.0), imuState(WAITING), magState(WAITING), imuSeq(0), magSeq(0), ekfCurrentState(EKF_WAITING), X(19), X_(19), sigma(19, 19), sigma_(19, 19), sonarState(WAITING)
+EKF::EKF(ros::NodeHandle nh) : currentImutime(0.0), previousImutime(0.0), imuState(WAITING), magState(WAITING), imuSeq(0), magSeq(0), ekfCurrentState(EKF_WAITING), X(19), X_(19), sigma(19, 19), sigma_(19, 19), lidarState(WAITING)
 {
 	nh_ = nh;
 }
@@ -101,21 +101,21 @@ void EKF::magCallback(const sensor_msgs::MagneticField::ConstPtr &msg)
 void EKF::lidarCallback(const sensor_msgs::Range::ConstPtr &msg)
 {
 
-	double sonarDistance = sonarVal.getSonarFilteredData(msg->range);
+	double lidarDistance = lidarVal.getlidarFilteredData(msg->range);
 
 	int goal = 1;
-	if (sonarDistance > 5)
+	if (lidarDistance > 5)
 	{
 		goal = 0;
 	}
 	ROS_INFO("OK");
 
-	if (sonarDistance > 0.05 && sonarDistance < 5)
+	if (lidarDistance > 0.05 && lidarDistance < 5)
 	{
 
-		if (sonarState == WAITING)
+		if (lidarState == WAITING)
 		{
-			sonarState = INITIALIZED;
+			lidarState = INITIALIZED;
 			return;
 		}
 		ekfUpdateHeight(msg->range);
@@ -192,7 +192,7 @@ void EKF::ekfPrediction()
 		X_.segment<2>(16) = X.segment<2>(16) + accelef.segment<2>(0)*deltaImutime;
 	}*/
 
-	if (sonarState != WAITING)
+	if (lidarState != WAITING)
 	{
 		X_(15) = X(15) + X(18) * deltaImutime;
 		X_(18) = X(18) + accelef(2) * deltaImutime;
@@ -229,7 +229,7 @@ void EKF::ekfPrediction()
 		Q.block<2,2>(16,16) = deltaImutime*deltaImutime*2*MatrixXd::Identity(2,2);
 	}*/
 
-	if (sonarState != WAITING)
+	if (lidarState != WAITING)
 	{
 		Q(18, 18) = 10 * deltaImutime * deltaImutime;
 		Q(15, 15) = 0.008;
@@ -347,7 +347,7 @@ void EKF::ekfUpdate()
 	}
 }
 
-void EKF::ekfUpdateHeight(double sonarDistance)
+void EKF::ekfUpdateHeight(double lidarDistance)
 {
 
 	double q0, q1, q2, q3;
@@ -369,7 +369,7 @@ void EKF::ekfUpdateHeight(double sonarDistance)
 	MatrixXd K(19, 1);
 	K = sigma_ * H.transpose() * S.inverse();
 
-	X = X_ + K * (sonarDistance - z_);
+	X = X_ + K * (lidarDistance - z_);
 	sigma = (MatrixXd::Identity(19, 19) - K * H) * sigma_;
 
 	sigma_ = sigma;
