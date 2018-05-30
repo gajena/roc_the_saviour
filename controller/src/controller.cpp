@@ -4,7 +4,7 @@
 										 and x --  90 degree couter clockwise.--------------------------------------
 
 ----* Publisher 	/mavros/mocap/pose - publish processed value from PID controller as euler angle setpoint
-					/mavros/setpoint_position/local - publisher for altitude setpoint and yaw angle setpoint-------
+					/mavros/setpoint_position/local - publisher for altitude setpoint and yaw angle setpoint.-------
 ------------------------------------------------------------------------------------------------------------------*/
 #include "ros/ros.h"
 #include "std_msgs/String.h"
@@ -16,6 +16,7 @@
 #include <tf/transform_datatypes.h>
 #include <sensor_msgs/Range.h>
 #include <mavros_msgs/PositionTarget.h>
+
 using namespace std;
 
 /*flags for detection of aruco and threshold check*/
@@ -39,7 +40,7 @@ void arucocb(const geometry_msgs::PoseStamped::ConstPtr& msg)
 	x = (msg->pose.position.x);
   	y = (msg->pose.position.y);
 
-  	aruco_detected_flag = 1;
+    aruco_detected_flag = 1;
 }
 
 void distcb(const geometry_msgs::PoseStamped::ConstPtr& msg)
@@ -53,7 +54,7 @@ int main (int argc, char **argv)
     ros::init(argc, argv, "controller");
     ros::NodeHandle nh;
 
-    ros::Subscriber aruco_sub = nh.subscribe<geometry_msgs::PoseStamped>("/aruco_single/pose", 10, arucocb);
+    ros::Subscriber aruco_sub = nh.subscribe<geometry_msgs::PoseStamped>("/aruco_single/pose", 1, arucocb);
     ros::Subscriber dist_sub = nh.subscribe<geometry_msgs::PoseStamped>("/pose", 100,distcb);
 
 	ros::Publisher setpoint_pub = nh.advertise<geometry_msgs::PoseStamped>("/mavros/setpoint_position/local", 10);
@@ -66,20 +67,21 @@ int main (int argc, char **argv)
 
     while ( ros::ok() )
     {
-    	float roll_p,roll_i,roll_d, pitch_p, pitch_i, pitch_d;
+    	float roll_p,roll_i,roll_d, pitch_p, pitch_i, pitch_d,set_alt;
+        
     	nh.getParam("/controller/roll_p", roll_p);
 		nh.getParam("/controller/roll_d", roll_d);
     	nh.getParam("/controller/roll_i", roll_i);
         nh.getParam("/controller/pitch_p", pitch_p);
         nh.getParam("/controller/pitch_d", pitch_d);
         nh.getParam("/controller/pitch_i", pitch_i);
+        nh.getParam("/controller/set_alt", set_alt);
 
 		mocap.header.stamp = ros::Time::now();
         setpoint.header.stamp = ros::Time::now();
                
         if( aruco_detected_flag == 1)        
         {
-
             err_sum_x = err_sum_x + x;
             err_sum_y = err_sum_y + y;
 
@@ -148,14 +150,16 @@ int main (int argc, char **argv)
             //cout<<"aruco_detected"<<endl<<"pitch = "<<mocap.pose.position.x<<endl<< "roll = "<< mocap.pose.position.y<<endl;
             //cout<<"aruco_x = "<<x<<endl<<"aruco_y = "<<y<<endl;
         }
-            setpoint.pose.position.z = 1.2f;
-        setpoint_pub.publish(setpoint);
-
+        
+        setpoint.pose.position.z = set_alt;
+        
         mocap.pose.position.z = dist;
+        
+        setpoint_pub.publish(setpoint);
         mocap_pub.publish(mocap);
+        
         ros::spinOnce();
         loop_rate.sleep();
-
     }
     return 0;
 }

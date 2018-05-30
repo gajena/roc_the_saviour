@@ -1,7 +1,8 @@
-roll_p: 0.033
-roll_d: -0.0033
+roll_p: 0.2
+roll_d: 0.12
 roll_i: 0.0000
-pitch_p: 0.033
-pitch_d: -0.0033
+pitch_p: 0.2
+pitch_d: 0.12
 pitch_i: 0.0000
 reset: 0
+set_alt: 1.2
