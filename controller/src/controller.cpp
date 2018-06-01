@@ -16,7 +16,7 @@
 #include <tf/transform_datatypes.h>
 #include <sensor_msgs/Range.h>
 #include <mavros_msgs/PositionTarget.h>
-#include </home/drive/src/pelican_ws/devel/include/aruco_mapping/ArucoMarker.h>
+#include </home/snuc/ashwin_ws/devel/include/aruco_mapping/ArucoMarker.h>
 #include <sensor_msgs/Imu.h>
 
 using namespace std;
@@ -52,8 +52,11 @@ void arucocb(const aruco_mapping::ArucoMarker::ConstPtr& msg)
     double r, p;
     m.getRPY(r, p, yaw_marker);
    
-    yaw_set = (yaw-yaw_marker);
-
+    yaw_set = (yaw-yaw_marker);  
+    if(isnan(yaw_set))
+	yaw_set=yaw;
+    else
+{
     if(yaw_set>3.14)
     {
         yaw_set = yaw_set - (3.14*2);
@@ -62,6 +65,7 @@ void arucocb(const aruco_mapping::ArucoMarker::ConstPtr& msg)
     {
         yaw_set = yaw_set + (3.14*2);
     }
+}
     // cout<<"yaw_set"<<(yaw_set)<<endl<<"yaw="<<yaw<<endl<<"yaw_marker"<<yaw_marker<<endl<<endl;
     aruco_detected_flag = 1;
 }
