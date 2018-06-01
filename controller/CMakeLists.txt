@@ -203,7 +203,7 @@ include_directories(
 
 add_executable(controller src/controller.cpp )
 target_link_libraries(controller
-    ${catkin_LIBRARIES})
+    ${catkin_LIBRARIES} ${aruco_LIBS})
     
 add_dependencies(controller ${catkin_EXPORTED_TARGETS})
 

@@ -16,8 +16,6 @@
 #include <tf/transform_datatypes.h>
 #include <sensor_msgs/Range.h>
 #include <mavros_msgs/PositionTarget.h>
-#include </home/drive/src/pelican_ws/devel/include/aruco_mapping/ArucoMarker.h>
-
 
 using namespace std;
 
@@ -37,10 +35,10 @@ geometry_msgs::PoseStamped setpoint;
 mavros_msgs::PositionTarget set_raw;
 float dist;
 
-void arucocb(const aruco_mapping::ArucoMarker::ConstPtr& msg)
+void arucocb(const geometry_msgs::PoseStamped::ConstPtr& msg)
 {
-	x = (msg->global_camera_pose.position.x);
-  	y = (msg->global_camera_pose.position.y);
+	x = (msg->pose.position.x);
+  	y = (msg->pose.position.y);
 
     aruco_detected_flag = 1;
 }
@@ -56,7 +54,7 @@ int main (int argc, char **argv)
     ros::init(argc, argv, "controller");
     ros::NodeHandle nh;
 
-    ros::Subscriber aruco_sub = nh.subscribe<aruco_mapping::ArucoMarker>("/aruco_poses", 10, arucocb);
+    ros::Subscriber aruco_sub = nh.subscribe<geometry_msgs::PoseStamped>("/aruco_single/pose", 1, arucocb);
     ros::Subscriber dist_sub = nh.subscribe<geometry_msgs::PoseStamped>("/pose", 100,distcb);
 
 	ros::Publisher setpoint_pub = nh.advertise<geometry_msgs::PoseStamped>("/mavros/setpoint_position/local", 10);
@@ -97,17 +95,37 @@ int main (int argc, char **argv)
                 mocap.pose.position.y = (x-x_des)*roll_p + (err_sum_x)*0.03*roll_i + (x-x_prev)*30*roll_d;//roll
                 mocap.pose.position.x = (y-y_des)*pitch_p + (err_sum_y)*0.03*pitch_i + (y-y_prev)*30*pitch_d;//pitch
             } 
-            cout<<"x_des="<<x_des<<endl;
+
+            if(abs(mocap.pose.position.y)>0)
+            {
+                roll_p_perc = abs((x-x_des)*roll_p/mocap.pose.position.y)*100;
+                roll_i_perc = abs((err_sum_x)*0.03*roll_i/mocap.pose.position.y)*100;
+                roll_d_perc = abs((x-x_prev)*30*roll_d/mocap.pose.position.y)*100;
+                // offset_perc = abs(offset/mocap.pose.position.y)*100;
+            }
+
+            if(roll_p_perc>max_roll_p_perc)
+                max_roll_p_perc = roll_p_perc;
+            if(roll_i_perc>max_roll_i_perc)
+                max_roll_i_perc = roll_i_perc;
+            if(roll_d_perc>max_roll_d_perc)
+                max_roll_d_perc = roll_d_perc;
+
+            cout<<"Roll sp = "<<mocap.pose.position.y<<endl;
+            cout<<"X = "<<x<<endl;
+            cout<<"Roll"<<endl;
+            cout<<"P % = "<<roll_p_perc<<endl;
+            cout<<"I % = "<<roll_i_perc<<endl;
+            cout<<"D % = "<<roll_d_perc<<endl;
+            // cout<<"offset % = "<<offset_perc<<endl<<endl;
+            cout<<"MAX P % = "<<max_roll_p_perc<<endl;
+            cout<<"MAX I % = "<<max_roll_i_perc<<endl;
+            cout<<"MAX D % = "<<max_roll_d_perc<<endl<<endl<<endl;
+
             x_prev=x;
 	        y_prev=y;
 
             i=i+1;
-
-            if( (i%80)==0 )
-            {
-                x_des = x_des + 0.1;
-                y_des = y_des + 0.1;
-            }
 
             q.setRPY(0, 0, yaw);
 
@@ -145,28 +163,3 @@ int main (int argc, char **argv)
     }
     return 0;
 }
- // if(abs(mocap.pose.position.y)>0)
-            // {
-            //     roll_p_perc = abs((x-x_des)*roll_p/mocap.pose.position.y)*100;
-            //     roll_i_perc = abs((err_sum_x)*0.03*roll_i/mocap.pose.position.y)*100;
-            //     roll_d_perc = abs((x-x_prev)*30*roll_d/mocap.pose.position.y)*100;
-            //     // offset_perc = abs(offset/mocap.pose.position.y)*100;
-            // }
-
-            // if(roll_p_perc>max_roll_p_perc)
-            //     max_roll_p_perc = roll_p_perc;
-            // if(roll_i_perc>max_roll_i_perc)
-            //     max_roll_i_perc = roll_i_perc;
-            // if(roll_d_perc>max_roll_d_perc)
-            //     max_roll_d_perc = roll_d_perc;
-
-            // cout<<"Roll sp = "<<mocap.pose.position.y<<endl;
-            // cout<<"X = "<<x<<endl;
-            // cout<<"Roll"<<endl;
-            // cout<<"P % = "<<roll_p_perc<<endl;
-            // cout<<"I % = "<<roll_i_perc<<endl;
-            // cout<<"D % = "<<roll_d_perc<<endl;
-            // // cout<<"offset % = "<<offset_perc<<endl<<endl;
-            // cout<<"MAX P % = "<<max_roll_p_perc<<endl;
-            // cout<<"MAX I % = "<<max_roll_i_perc<<endl;
-            // cout<<"MAX D % = "<<max_roll_d_perc<<endl<<endl<<endl;
