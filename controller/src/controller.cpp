@@ -17,7 +17,7 @@
 #include <sensor_msgs/Range.h>
 #include <mavros_msgs/PositionTarget.h>
 #include </home/drive/src/pelican_ws/devel/include/aruco_mapping/ArucoMarker.h>
-
+#include <sensor_msgs/Imu.h>
 
 using namespace std;
 
@@ -29,7 +29,7 @@ float roll_p_perc,roll_i_perc,roll_d_perc,offset_perc;
 float max_roll_p_perc=0,max_roll_d_perc=0,max_roll_i_perc=0;
 
 float sp_thresh = 0.1, err_sum_x = 0.0, err_sum_y = 0.0;
-float yaw = 5.7;
+double yaw,yaw_set,yaw_marker;
 
 tf::Quaternion q;
 geometry_msgs::PoseStamped mocap;
@@ -39,9 +39,30 @@ float dist;
 
 void arucocb(const aruco_mapping::ArucoMarker::ConstPtr& msg)
 {
-	x = (msg->global_camera_pose.position.x);
+	x = -(msg->global_camera_pose.position.x);
   	y = (msg->global_camera_pose.position.y);
+    tf::Quaternion q(
+        msg->global_camera_pose.orientation.x,
+        msg->global_camera_pose.orientation.y,
+        msg->global_camera_pose.orientation.z,
+        msg->global_camera_pose.orientation.w);
+    
+    tf::Matrix3x3 m(q);
+   
+    double r, p;
+    m.getRPY(r, p, yaw_marker);
+   
+    yaw_set = (yaw-yaw_marker);
 
+    if(yaw_set>3.14)
+    {
+        yaw_set = yaw_set - (3.14*2);
+    }
+    else if (yaw_set<-3.14)
+    {
+        yaw_set = yaw_set + (3.14*2);
+    }
+    // cout<<"yaw_set"<<(yaw_set)<<endl<<"yaw="<<yaw<<endl<<"yaw_marker"<<yaw_marker<<endl<<endl;
     aruco_detected_flag = 1;
 }
 
@@ -51,6 +72,16 @@ void distcb(const geometry_msgs::PoseStamped::ConstPtr& msg)
   	
 }
 
+
+void imuCallback(const sensor_msgs::Imu::ConstPtr& msg)
+{
+    tf::Quaternion q(0, 0, msg->orientation.z, msg->orientation.w);
+    tf::Matrix3x3 m(q);
+    double r, p;
+    m.getRPY(r,p,yaw);
+    
+}
+
 int main (int argc, char **argv)
 {
     ros::init(argc, argv, "controller");
@@ -58,8 +89,9 @@ int main (int argc, char **argv)
 
     ros::Subscriber aruco_sub = nh.subscribe<aruco_mapping::ArucoMarker>("/aruco_poses", 10, arucocb);
     ros::Subscriber dist_sub = nh.subscribe<geometry_msgs::PoseStamped>("/pose", 100,distcb);
-
-	ros::Publisher setpoint_pub = nh.advertise<geometry_msgs::PoseStamped>("/mavros/setpoint_position/local", 10);
+    ros::Subscriber sub1 = nh.subscribe("/mavros/imu/data",100, imuCallback);
+	
+    ros::Publisher setpoint_pub = nh.advertise<geometry_msgs::PoseStamped>("/mavros/setpoint_position/local", 10);
     ros::Publisher mocap_pub = nh.advertise<geometry_msgs::PoseStamped>("/mavros/mocap/pose",10);
 
     ros::Rate loop_rate(40);
@@ -99,7 +131,7 @@ int main (int argc, char **argv)
                 mocap.pose.position.y = (x-x_des)*roll_p + (err_sum_x)*0.03*roll_i + (x-x_prev)*30*roll_d;//roll
                 mocap.pose.position.x = (y-y_des)*pitch_p + (err_sum_y)*0.03*pitch_i + (y-y_prev)*30*pitch_d;//pitch
             } 
-            cout<<"x_des="<<x_des<<endl;
+            // cout<<"x_des="<<x_des<<endl;
             x_prev=x;
 	        y_prev=y;
 
@@ -110,8 +142,9 @@ int main (int argc, char **argv)
                 x_des = x_des + x_diff;
                 y_des = y_des + y_diff;
             }
+            cout<<"x="<<x_des<<endl;
 
-            q.setRPY(0, 0, yaw);
+            q.setRPY(0, 0, yaw_set);
 
             setpoint.pose.orientation.z = q.z();
             setpoint.pose.orientation.w = q.w();
@@ -128,8 +161,8 @@ int main (int argc, char **argv)
             if ( mocap.pose.position.x < -sp_thresh || mocap.pose.position.x > sp_thresh || mocap.pose.position.y < -sp_thresh || mocap.pose.position.y > sp_thresh )
             cross_flag= 1;
 
-            if ( cross_flag==1 )
-            cout<<"Attitude Threshold reached"<<endl;
+            // if ( cross_flag==1 )
+            // cout<<"Attitude Threshold reached"<<endl;
 
             //cout<<"aruco_detected"<<endl<<"pitch = "<<mocap.pose.position.x<<endl<< "roll = "<< mocap.pose.position.y<<endl;
             //cout<<"aruco_x = "<<x<<endl<<"aruco_y = "<<y<<endl;
@@ -147,6 +180,11 @@ int main (int argc, char **argv)
     }
     return 0;
 }
+ 
+
+
+
+
  // if(abs(mocap.pose.position.y)>0)
             // {
             //     roll_p_perc = abs((x-x_des)*roll_p/mocap.pose.position.y)*100;

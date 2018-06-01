@@ -1,6 +1,5 @@
 <?xml version="1.0"?>
 <launch> 
-    
   <!-- ArUco mapping -->
   <node pkg="aruco_mapping" type="aruco_mapping" name="aruco_mapping" output="screen">
     <remap from="/image_raw" to="/usb_cam/image_raw"/>
