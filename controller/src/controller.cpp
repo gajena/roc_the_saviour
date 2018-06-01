@@ -69,7 +69,7 @@ int main (int argc, char **argv)
 
     while ( ros::ok() )
     {
-    	float roll_p,roll_i,roll_d, pitch_p, pitch_i, pitch_d,set_alt;
+    	float roll_p,roll_i,roll_d, pitch_p, pitch_i, pitch_d, set_alt, x_diff, y_diff;
         
     	nh.getParam("/controller/roll_p", roll_p);
 		nh.getParam("/controller/roll_d", roll_d);
@@ -78,6 +78,8 @@ int main (int argc, char **argv)
         nh.getParam("/controller/pitch_d", pitch_d);
         nh.getParam("/controller/pitch_i", pitch_i);
         nh.getParam("/controller/set_alt", set_alt);
+        nh.getParam("/controller/x_diff", x_diff);
+        nh.getParam("/controller/y_diff", y_diff);
 
 		mocap.header.stamp = ros::Time::now();
         setpoint.header.stamp = ros::Time::now();
@@ -105,8 +107,8 @@ int main (int argc, char **argv)
 
             if( (i%80)==0 )
             {
-                x_des = x_des + 0.1;
-                y_des = y_des + 0.1;
+                x_des = x_des + x_diff;
+                y_des = y_des + y_diff;
             }
 
             q.setRPY(0, 0, yaw);
