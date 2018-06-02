@@ -38,36 +38,40 @@ mavros_msgs::PositionTarget set_raw;
 float dist;
 
 void arucocb(const aruco_mapping::ArucoMarker::ConstPtr& msg)
-{
-	x = -(msg->global_camera_pose.position.x);
-  	y = (msg->global_camera_pose.position.y);
-    tf::Quaternion q(
-        msg->global_camera_pose.orientation.x,
-        msg->global_camera_pose.orientation.y,
-        msg->global_camera_pose.orientation.z,
-        msg->global_camera_pose.orientation.w);
+{   
+    if(msg->marker_ids.size()==0)
+    {
+        x = -(msg->global_camera_pose.position.x);
+  	    y = (msg->global_camera_pose.position.y);
+        tf::Quaternion q(
+            msg->global_camera_pose.orientation.x,
+            msg->global_camera_pose.orientation.y,
+            msg->global_camera_pose.orientation.z,
+            msg->global_camera_pose.orientation.w);
     
-    tf::Matrix3x3 m(q);
+            tf::Matrix3x3 m(q);
    
-    double r, p;
-    m.getRPY(r, p, yaw_marker);
+            double r, p;
+            m.getRPY(r, p, yaw_marker);
    
-    yaw_set = (yaw-yaw_marker);  
-    if(isnan(yaw_set))
-	yaw_set=yaw;
-    else
-{
-    if(yaw_set>3.14)
-    {
-        yaw_set = yaw_set - (3.14*2);
+            yaw_set = (yaw-yaw_marker);  
+        
+        if(isnan(yaw_set))
+	       yaw_set=yaw;
+        else
+        {
+            if(yaw_set>3.14)
+            {
+                yaw_set = yaw_set - (3.14*2);
+            }
+            else if (yaw_set<-3.14)
+            {
+                yaw_set = yaw_set + (3.14*2);
+            }
+        }
+        cout<<"yaw_set"<<(yaw_set)<<endl<<"yaw="<<yaw<<endl<<"yaw_marker"<<yaw_marker<<endl<<endl;
+        aruco_detected_flag = 1;
     }
-    else if (yaw_set<-3.14)
-    {
-        yaw_set = yaw_set + (3.14*2);
-    }
-}
-    // cout<<"yaw_set"<<(yaw_set)<<endl<<"yaw="<<yaw<<endl<<"yaw_marker"<<yaw_marker<<endl<<endl;
-    aruco_detected_flag = 1;
 }
 
 void distcb(const geometry_msgs::PoseStamped::ConstPtr& msg)

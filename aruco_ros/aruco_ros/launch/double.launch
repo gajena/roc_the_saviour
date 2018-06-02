@@ -1,8 +1,8 @@
 <launch>
 
-    <arg name="marker1Id"         default="5"/>
-    <arg name="marker2Id"         default="5"/>
-    <arg name="markerSize"        default=".04"/>    <!-- in m -->
+    <arg name="marker1Id"         default="8"/>
+    <arg name="marker2Id"         default="10"/>
+    <arg name="markerSize"        default=".09"/>    <!-- in m -->
     <arg name="eye"               default="left"/>
     <arg name="dct_normalization" default="True" />
     <arg name="dct_filter_size"   default="2" />
@@ -11,8 +11,8 @@
 
 
     <node pkg="aruco_ros" type="double" name="aruco_simple">    
-        <remap from="/camera_info" to="/stereo/$(arg eye)/camera_info" />
-        <remap from="/image" to="/stereo/$(arg eye)/image_rect_color" />
+        <remap from="/camera_info" to="/usb_cam/camera_info" />
+        <remap from="/image" to="/usb_cam/image_raw" />
         <param name="image_is_rectified" value="True"/>
         <param name="marker_size" value="$(arg markerSize)"/>
         <param name="marker_id1" value="$(arg marker1Id)"/>
