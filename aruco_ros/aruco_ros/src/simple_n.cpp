@@ -126,15 +126,15 @@ void image_callback(const sensor_msgs::ImageConstPtr& msg)
 
         std::cout<<marker_id[0]<<marker_id[1]<<marker_id[2]<<marker_id[3]<<std::endl;
         // only publishing the selected marker
-        for (int j=0; j<4; j++)
+        for (int j=0; j<markers.size(); j++)
         {
-          geometry_msgs::Pose poseMsg1,poseMsg2,poseMsg3,poseMsg4;
+          
           if ( markers[j].id == marker_id[0] )
           {
             tf::Transform transform = aruco_ros::arucoMarker2Tf(markers[j]);
             br.sendTransform(tf::StampedTransform(transform, curr_stamp,
                                                 parent_name, child_name1));
-            
+            geometry_msgs::Pose poseMsg1;
             tf::poseTFToMsg(transform, poseMsg1);
             // if(j==0)
             // pose_pub1.publish(poseMsg1);
@@ -147,7 +147,7 @@ void image_callback(const sensor_msgs::ImageConstPtr& msg)
             tf::Transform transform = aruco_ros::arucoMarker2Tf(markers[j]);
             br.sendTransform(tf::StampedTransform(transform, curr_stamp,
                                                 parent_name, child_name2));
-            
+            geometry_msgs::Pose poseMsg2;
             tf::poseTFToMsg(transform, poseMsg2);
             pose_pub2.publish(poseMsg2);
           }
@@ -156,7 +156,7 @@ void image_callback(const sensor_msgs::ImageConstPtr& msg)
             tf::Transform transform = aruco_ros::arucoMarker2Tf(markers[j]);
             br.sendTransform(tf::StampedTransform(transform, curr_stamp,
                                                 parent_name, child_name3));
-            
+            geometry_msgs::Pose poseMsg3;
             tf::poseTFToMsg(transform, poseMsg3);
             pose_pub3.publish(poseMsg3);
           }
@@ -165,7 +165,7 @@ void image_callback(const sensor_msgs::ImageConstPtr& msg)
             tf::Transform transform = aruco_ros::arucoMarker2Tf(markers[j]);
             br.sendTransform(tf::StampedTransform(transform, curr_stamp,
                                                 parent_name, child_name4));
-            
+            geometry_msgs::Pose poseMsg4;
             tf::poseTFToMsg(transform, poseMsg4);
             pose_pub4.publish(poseMsg4);
           }

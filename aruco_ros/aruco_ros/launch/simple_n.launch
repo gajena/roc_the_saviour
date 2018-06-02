@@ -2,7 +2,7 @@
 
     <arg name="marker1Id"         default="8"/>
     <arg name="marker2Id"         default="5"/>
-    <arg name="markerSize"        default=".12"/>    <!-- in m -->
+    <arg name="markerSize"        default=".09"/>    <!-- in m -->
     <arg name="eye"               default="left"/>
     <arg name="dct_normalization" default="True" />
     <arg name="dct_filter_size"   default="2" />
@@ -10,7 +10,7 @@
     <arg name="marker2_frame"     default="marker_object_frame" />
 
 
-    <node pkg="aruco_ros" type="simple_n" name="simple_n" output="screen">    
+    <node pkg="aruco_ros" type="simple_n" name="simple_n" output="screen" >   
         <remap from="/camera_info" to="/usb_cam/camera_info" />
         <remap from="/image" to="/usb_cam/image_raw" />
         <param name="image_is_rectified" value="True"/>
