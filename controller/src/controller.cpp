@@ -37,17 +37,16 @@ geometry_msgs::PoseStamped setpoint;
 mavros_msgs::PositionTarget set_raw;
 float dist;
 
-void arucocb(const aruco_mapping::ArucoMarker::ConstPtr& msg)
+void arucocb(const geometry_msgs::PoseStamped::ConstPtr& msg)
 {   
-    if(msg->marker_ids.size()==0)
-    {
-        x = -(msg->global_camera_pose.position.x);
-  	    y = (msg->global_camera_pose.position.y);
+
+        x = -(msg->pose.position.x);
+  	    y = (msg->pose.position.y);
         tf::Quaternion q(
-            msg->global_camera_pose.orientation.x,
-            msg->global_camera_pose.orientation.y,
-            msg->global_camera_pose.orientation.z,
-            msg->global_camera_pose.orientation.w);
+            msg->pose.orientation.x,
+            msg->pose.orientation.y,
+            msg->pose.orientation.z,
+            msg->pose.orientation.w);
     
             tf::Matrix3x3 m(q);
    
@@ -71,7 +70,7 @@ void arucocb(const aruco_mapping::ArucoMarker::ConstPtr& msg)
         }
         cout<<"yaw_set"<<(yaw_set)<<endl<<"yaw="<<yaw<<endl<<"yaw_marker"<<yaw_marker<<endl<<endl;
         aruco_detected_flag = 1;
-    }
+    
 }
 
 void distcb(const geometry_msgs::PoseStamped::ConstPtr& msg)
@@ -95,7 +94,7 @@ int main (int argc, char **argv)
     ros::init(argc, argv, "controller");
     ros::NodeHandle nh;
 
-    ros::Subscriber aruco_sub = nh.subscribe<aruco_mapping::ArucoMarker>("/aruco_poses", 10, arucocb);
+    ros::Subscriber aruco_sub = nh.subscribe<geometry_msgs::PoseStamped>("/cam_pose_filtered", 10, arucocb);
     ros::Subscriber dist_sub = nh.subscribe<geometry_msgs::PoseStamped>("/pose", 100,distcb);
     ros::Subscriber sub1 = nh.subscribe("/mavros/imu/data",100, imuCallback);
 	
