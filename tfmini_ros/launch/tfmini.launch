@@ -4,5 +4,5 @@
     <param name="baud_rate" type="int" value="115200" />
   </node>
   
-  <node pkg="tf" type="static_transform_publisher" name="broadcasterTFmini" args="0 0 0 0 0 0 base_link TFmini 100" />
+<!--  <node pkg="tf" type="static_transform_publisher" name="broadcasterTFmini" args="0 0 0 0 0 0 base_link TFmini 100" />-->
 </launch>

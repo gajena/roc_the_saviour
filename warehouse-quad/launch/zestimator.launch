@@ -19,7 +19,7 @@
                 <arg name="log_output" value="$(arg log_output)" />
         </include>
 
-	<!-- px4flow -->
+	<!-- tfmini -->
 	<include file="$(find tfmini_ros)/launch/tfmini.launch" />
 
 	<node name="main" pkg="warehouse_quad" type="main" /> 

@@ -1,8 +1,8 @@
 <launch>
 	<include file="$(find usb_cam)/launch/usb_cam-test.launch"/>
-	<include file="$(find aruco_mapping)/launch/aruco_mapping.launch"/>
+	<include file="$(find aruco_ros)/launch/usb_cam.launch"/>
 	<include file="$(find warehouse_quad)/launch/zestimator.launch"/>
 	<node pkg="controller" type="controller" name="controller" clear_params="true" output="screen">
-		<rosparam file="$(find controller)/param/controller.yaml" />
+		<rosparam file="$(find controller)/param/controller1.yaml" />
 	</node>
 </launch>
