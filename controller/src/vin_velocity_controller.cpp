@@ -22,8 +22,8 @@ geometry_msgs::PoseStamped setpoint;
 
 void odomcb(const nav_msgs::Odometry::ConstPtr& msg)
 {
-    x = (msg->pose.pose.position.y);
-    y = (msg->pose.pose.position.x);
+    x = (msg->pose.pose.position.x);
+    y = (msg->pose.pose.position.y);
     vel_x = (msg->twist.twist.linear.x); 
     vel_y = (msg->twist.twist.linear.y); 
 
@@ -54,10 +54,11 @@ int main (int argc, char **argv)
 
     while ( ros::ok() )
     {
-        float k_p , k_i, k_d, offset;
+        float k_p , k_i, k_d, set_alt;
         nh.getParam("/vin_velocity_controller/k_p", k_p);
         nh.getParam("/vin_velocity_controller/k_d", k_d);
         nh.getParam("/vin_velocity_controller/k_i", k_i);
+        nh.getParam("/vin_velocity_controller/set_alt", set_alt);
 
         mocap.header.stamp = ros::Time::now();
         setpoint.header.stamp = ros::Time::now();
@@ -74,13 +75,12 @@ int main (int argc, char **argv)
             }
             else
             { 
-                float vel_sp_x = x-x_des;
-                float vel_sp_y = y-y_des;
-                mocap.pose.position.y = (vel_x - vel_sp_x)*k_p + (err_sum_x)*0.03*k_i + (vel_x - vel_x_prev)*30*k_d;//roll
-                mocap.pose.position.x = (vel_y - vel_sp_y)*k_p + (err_sum_y)*0.03*k_i + (vel_y - vel_y_prev)*30*k_d;//pitch
+                float vel_sp_x = x_des - x;
+                float vel_sp_y = y - y_des;
+                mocap.pose.position.y = (vel_sp_y - vel_y)*k_p + (err_sum_y)*0.03*k_i + (vel_y_prev - vel_y)*30*k_d;//roll
+                mocap.pose.position.x = (vel_sp_x - vel_x)*k_p + (err_sum_x)*0.03*k_i + (vel_x_prev - vel_x)*30*k_d;//pitch
             } 
-
-            setpoint.pose.position.z = 0.8f;
+            setpoint.pose.position.z = set_alt;
 
             vel_x_prev = vel_x;
             vel_y_prev = vel_y;
@@ -107,14 +107,13 @@ int main (int argc, char **argv)
             if ( cross_flag==1 )
             cout<<"Attitude Threshold reached"<<endl;
 
-            cout<<"debug="<<mocap.pose.position.x<<mocap.pose.position.y<<endl;
+            cout<<"pitch = "<<mocap.pose.position.x<<std::endl<<"roll = "<<mocap.pose.position.y<<endl;
             setpoint_pub.publish(setpoint);
         }
         mocap.pose.position.z = dist;
         mocap_pub.publish(mocap);
         ros::spinOnce();
         loop_rate.sleep();
-
     }
     return 0;
 }
