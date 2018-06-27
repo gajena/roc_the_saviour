@@ -17,16 +17,20 @@ find_package(catkin REQUIRED COMPONENTS
   tf
   nav_msgs
   )
+
+catkin_package()
 include_directories(${catkin_INCLUDE_DIRS})
+
+add_executable(vin_controller src/vin_controller.cpp )
+target_link_libraries(vin_controller
+    ${catkin_LIBRARIES})
+
 
 add_executable(controller src/controller.cpp )
 target_link_libraries(controller
     ${catkin_LIBRARIES} ${aruco_LIBS})
-    
-add_dependencies(controller ${catkin_EXPORTED_TARGETS})
 
-add_executable(vin_controller src/vin_controller.cpp )
-target_link_libraries(vin_controller
-    ${catkin_LIBRARIES} ${aruco_LIBS})
-    
-add_dependencies(vin_controller ${catkin_EXPORTED_TARGETS})
+#add_executable(vin_px4_controller src/vin_px4_controller.cpp )
+#target_link_libraries(vin_px4_controller
+ #   ${catkin_LIBRARIES} ${aruco_LIBS})
+
