@@ -82,11 +82,6 @@ int main (int argc, char **argv)
                
         if( aruco_detected_flag == 1)        
         {
-
-            //mavros_msgs::SetMode offb_set_mode;
-            //offb_set_mode.request.custom_mode = "OFFBOARD";
-            //mavros_msgs::CommandBool arm_cmd;
-            //arm_cmd.request.value = true;
             err_sum_x = err_sum_x + x;
             err_sum_y = err_sum_y + y;
 
@@ -106,35 +101,8 @@ int main (int argc, char **argv)
            // mocap.pose.position.x =  0;
            // mocap.pose.position.y = 0.03;
             // mocap.pose.position.z = dist;
-            // set_raw.position.x = 0;
-            // set_raw.position.y = 0;
-            // set_raw.position.z = 1;
-
+           
             cout<<"debug="<<mocap.pose.position.x<<mocap.pose.position.y<<endl;
-            // if(abs(mocap.pose.position.y)>0)
-            // {
-            //     roll_p_perc = abs((x-x_des)*k_p/mocap.pose.position.y)*100;
-            //     roll_i_perc = abs((err_sum_x)*0.03*k_i/mocap.pose.position.y)*100;
-            //     roll_d_perc = abs((x-x_prev)*30*k_d/mocap.pose.position.y)*100;
-            //     offset_perc = abs(offset/mocap.pose.position.y)*100;
-            // }
-
-            // if(roll_p_perc>max_roll_p_perc)
-            //     max_roll_p_perc = roll_p_perc;
-            // if(roll_i_perc>max_roll_i_perc)
-            //     max_roll_i_perc = roll_i_perc;
-            // if(roll_d_perc>max_roll_d_perc)
-            //     max_roll_d_perc = roll_d_perc;
-
-            // cout<<"X = "<<x<<endl;
-            // cout<<"Roll"<<endl;
-            // cout<<"P % = "<<roll_p_perc<<endl;
-            // cout<<"I % = "<<roll_i_perc<<endl;
-            // cout<<"D % = "<<roll_d_perc<<endl;
-            // cout<<"offset % = "<<offset_perc<<endl<<endl;
-            // cout<<"MAX P % = "<<max_roll_p_perc<<endl;
-            // cout<<"MAX I % = "<<max_roll_i_perc<<endl;
-            // cout<<"MAX D % = "<<max_roll_d_perc<<endl<<endl<<endl;
 
             x_prev=x;
             y_prev=y;
@@ -155,17 +123,12 @@ int main (int argc, char **argv)
             else if ( mocap.pose.position.y > sp_thresh )
                 mocap.pose.position.y = sp_thresh;
 
+            if ( cross_flag==1 )
+            cout<<"Attitude Threshold reached"<<endl;
             if ( mocap.pose.position.x < -sp_thresh || mocap.pose.position.x > sp_thresh || mocap.pose.position.y < -sp_thresh || mocap.pose.position.y > sp_thresh )
             cross_flag= 1;
 
-            if ( cross_flag==1 )
-            cout<<"Attitude Threshold reached"<<endl;
-
-            //cout<<"aruco_detected"<<endl<<"pitch = "<<mocap.pose.position.x<<endl<< "roll = "<< mocap.pose.position.y<<endl;
-            //cout<<"aruco_x = "<<x<<endl<<"aruco_y = "<<y<<endl;
-
             setpoint_pub.publish(setpoint);
-            // set_pub.publish(set_raw);
         }
         mocap.pose.position.z = dist;
         mocap_pub.publish(mocap);

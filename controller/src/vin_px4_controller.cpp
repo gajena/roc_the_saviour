@@ -1,11 +1,3 @@
-/*-----------------------------------------------------------------------------------------------------------------
-----* Subscriber	/aruco_single/pose - position feedback from aruco marker
-										 and y - vertically down 
-										 and x --  90 degree couter clockwise.--------------------------------------
-
-----* Publisher 	/mavros/mocap/pose - publish processed value from PID vin_controller as euler angle setpoint
-					/mavros/setpoint_position/local - publisher for altitude setpoint and yaw angle setpoint-------
-------------------------------------------------------------------------------------------------------------------*/
 #include "ros/ros.h"
 #include "std_msgs/String.h"
 #include "geometry_msgs/PoseStamped.h"

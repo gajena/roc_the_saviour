@@ -25,6 +25,9 @@ add_executable(vin_controller src/vin_controller.cpp )
 target_link_libraries(vin_controller
     ${catkin_LIBRARIES})
 
+add_executable(vin_velocity_controller src/vin_velocity_controller.cpp )
+target_link_libraries(vin_velocity_controller
+    ${catkin_LIBRARIES} ${aruco_LIBS})
 
 add_executable(controller src/controller.cpp )
 target_link_libraries(controller
