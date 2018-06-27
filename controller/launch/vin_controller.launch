@@ -1,0 +1,8 @@
+<launch>
+	<!-- <include file="$(find usb_cam)/launch/usb_cam-test.launch"/> -->
+	<!-- <include file="$(find aruco_ros)/launch/usb_cam.launch"/> -->
+	<include file="$(find rovio)/launch/rovio_node.launch"/>
+	<include file="$(find warehouse_quad)/launch/zestimator.launch"/>
+	<node pkg="controller" type="vin_controller" name="vin_controller" clear_params="true" output="screen">
+		<rosparam file="$(find controller)/param/vin_controller.yaml" />
+	</node> 
