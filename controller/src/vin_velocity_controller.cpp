@@ -10,12 +10,16 @@
 #include <mavros_msgs/PositionTarget.h>
 #include <nav_msgs/Odometry.h>
 #include <mavros_msgs/State.h>
+#include <sensor_msgs/Imu.h>
+
 using namespace std;
 
 /*flags for detection of aruco and threshold check*/
-int odom_detected_flag = 0,cross_flag=0, vel_cross_flag = 0;
-float x = 0, y = 0, x_des = 0, y_des = 0, sp_thresh = 0.3, err_sum_x = 0.0, err_sum_y = 0.0, yaw = 5.7, dist;
-float vel_x = 0, vel_y = 0, vel_thresh = 1.0;
+int odom_detected_flag = 0,cross_flag=0, vel_cross_flag = 0, init_imu_flag = 0;
+float x = 0, y = 0, x_des = 0, y_des = 0, sp_thresh = 0.3, err_sum_x = 0.0, err_sum_y = 0.0, yaw = 5.7, dist, err_sum_pos_x = 0,err_sum_pos_y = 0;
+float vel_x = 0, vel_y = 0, vel_thresh = 1.0,vel_sp_x = 0,vel_sp_y = 0;
+double imu_yaw;
+
 string mode_;
 
 tf::Quaternion q;
@@ -43,6 +47,18 @@ void statecb(const mavros_msgs::State::ConstPtr& msg)
     mode_ = msg->mode;
 }
 
+void imuCallback(const sensor_msgs::Imu::ConstPtr& msg)
+{
+    if(init_imu_flag==0)
+    {
+       tf::Quaternion q1(msg->orientation.x, msg->orientation.y, msg->orientation.z, msg->orientation.w);
+        tf::Matrix3x3 m(q1);
+        double r, p;
+        m.getRPY(r,p,imu_yaw);
+        init_imu_flag=1;
+    }  
+}
+
 int main (int argc, char **argv)
 {
     ros::init(argc, argv, "vin_velocity_controller");
@@ -51,7 +67,8 @@ int main (int argc, char **argv)
     ros::Subscriber odom_sub = nh.subscribe<nav_msgs::Odometry>("/rovio/odometry", 10, odomcb);
     ros::Subscriber dist_sub = nh.subscribe<geometry_msgs::PoseStamped>("/pose", 100,distcb);
     ros::Subscriber state_sub = nh.subscribe<mavros_msgs::State>("/mavros/state", 100,statecb);
-    
+    ros::Subscriber sub1 = nh.subscribe("/mavros/imu/data",100, imuCallback);
+
     ros::Publisher setpoint_pub = nh.advertise<geometry_msgs::PoseStamped>("/mavros/setpoint_position/local", 10);
     ros::Publisher mocap_pub = nh.advertise<geometry_msgs::PoseStamped>("/mavros/mocap/pose",10);
    
@@ -62,27 +79,23 @@ int main (int argc, char **argv)
 
     while ( ros::ok() )
     {
-        float pos_k_p, vel_k_p , vel_k_i, vel_k_d, set_alt;
+        float pos_k_p,pos_k_i, vel_k_p , vel_k_i, vel_k_d, set_alt;
         nh.getParam("/vin_velocity_controller/pos_k_p", pos_k_p);
+        
         nh.getParam("/vin_velocity_controller/vel_k_p", vel_k_p);
         nh.getParam("/vin_velocity_controller/vel_k_d", vel_k_d);
         nh.getParam("/vin_velocity_controller/set_alt", set_alt);
+        nh.getParam("/vin_velocity_controller/x_des", x_des);
+        nh.getParam("/vin_velocity_controller/y_des", y_des);
         
-        if(mode_=="OFFBOARD")
-            nh.getParam("/vin_velocity_controller/vel_k_i", vel_k_i);
-        else
-        {
-            vel_k_i = 0;
-            err_sum_y = 0;
-            err_sum_x = 0;
-        }
+
         mocap.header.stamp = ros::Time::now();
         setpoint.header.stamp = ros::Time::now();
                
         if( odom_detected_flag == 1)        
-        {
-            err_sum_x = err_sum_x + vel_x;
-            err_sum_y = err_sum_y + vel_y;
+        {               
+
+            
 
             if (i==0)
             {
@@ -90,11 +103,44 @@ int main (int argc, char **argv)
                 vel_y_prev = vel_y;
             }
             else
-            { 
-                float vel_sp_x = (x_des - x)*pos_k_p;
-                float vel_sp_y = (y_des - y)*pos_k_p;
-               //  vel_sp_y = -0.0f;
-               // vel_sp_x = 0.0f; 
+            {   
+                err_sum_pos_x = err_sum_pos_x + (x_des-x);
+                err_sum_pos_y = err_sum_pos_y + (y_des-y);
+
+                if(mode_=="OFFBOARD")
+                {
+                    nh.getParam("/vin_velocity_controller/pos_k_i", pos_k_i);
+                }
+                else
+                {
+
+                    pos_k_i = 0;
+                    err_sum_pos_y = 0;
+                    err_sum_pos_x = 0;
+                }
+
+                cout<<"Error sum pos = "<<err_sum_pos_x*0.03*pos_k_i<<" , "<<err_sum_pos_y*0.03*pos_k_i<<endl;
+
+                vel_sp_x = (x_des - x)*pos_k_p + (err_sum_pos_x)*0.03*pos_k_i;
+                vel_sp_y = (y_des - y)*pos_k_p + (err_sum_pos_y)*0.03*pos_k_i;
+
+                err_sum_x = err_sum_x + (vel_x - vel_sp_x);
+                err_sum_y = err_sum_y + (vel_y - vel_sp_y);
+
+                if(mode_=="OFFBOARD")
+                {
+                    nh.getParam("/vin_velocity_controller/vel_k_i", vel_k_i);
+                }
+                else
+                {
+                    vel_k_i = 0;
+                    err_sum_y = 0;
+                    err_sum_x = 0;
+                }
+
+                
+//                 vel_sp_y = -0.0f;
+  //              vel_sp_x = 0.0f; 
 
                 if ( vel_sp_x < -vel_thresh || vel_sp_x > vel_thresh || vel_sp_y < -vel_thresh || vel_sp_y > vel_thresh )
                     vel_cross_flag= 1;
@@ -122,6 +168,8 @@ int main (int argc, char **argv)
 
             i=i+1;
 
+            yaw = imu_yaw;
+
             q.setRPY(0, 0, yaw);
 
             setpoint.pose.orientation.z = q.z();
@@ -140,7 +188,7 @@ int main (int argc, char **argv)
                 mocap.pose.position.y = sp_thresh;
 
             if ( cross_flag==1 )
-            cout<<"Attitude Threshold reached"<<endl;
+                cout<<"Attitude Threshold reached"<<endl;
 
             cout<<"pitch = "<<mocap.pose.position.x<<std::endl<<"roll = "<<mocap.pose.position.y<<endl;
             setpoint_pub.publish(setpoint);
