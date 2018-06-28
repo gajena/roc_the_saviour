@@ -1,4 +1,5 @@
-k_p: 0.1
-k_d: 0.0
-k_i: 0.0
+pos_k_p: 0.23
+vel_k_p: 0.3
+vel_k_d: 0.01
+vel_k_i: 0.01
 set_alt: 0.8

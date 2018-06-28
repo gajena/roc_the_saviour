@@ -9,12 +9,14 @@
 #include <sensor_msgs/Range.h>
 #include <mavros_msgs/PositionTarget.h>
 #include <nav_msgs/Odometry.h>
+#include <mavros_msgs/State.h>
 using namespace std;
 
 /*flags for detection of aruco and threshold check*/
-int odom_detected_flag = 0,cross_flag=0;
+int odom_detected_flag = 0,cross_flag=0, vel_cross_flag = 0;
 float x = 0, y = 0, x_des = 0, y_des = 0, sp_thresh = 0.3, err_sum_x = 0.0, err_sum_y = 0.0, yaw = 5.7, dist;
-float vel_x = 0, vel_y = 0;
+float vel_x = 0, vel_y = 0, vel_thresh = 1.0;
+string mode_;
 
 tf::Quaternion q;
 geometry_msgs::PoseStamped mocap;
@@ -25,7 +27,7 @@ void odomcb(const nav_msgs::Odometry::ConstPtr& msg)
     x = (msg->pose.pose.position.x);
     y = (msg->pose.pose.position.y);
     vel_x = (msg->twist.twist.linear.x); 
-    vel_y = (msg->twist.twist.linear.y); 
+    vel_y = -(msg->twist.twist.linear.y); 
 
     odom_detected_flag = 1;
 }
@@ -36,6 +38,11 @@ void distcb(const geometry_msgs::PoseStamped::ConstPtr& msg)
     
 }
 
+void statecb(const mavros_msgs::State::ConstPtr& msg)
+{
+    mode_ = msg->mode;
+}
+
 int main (int argc, char **argv)
 {
     ros::init(argc, argv, "vin_velocity_controller");
@@ -43,6 +50,7 @@ int main (int argc, char **argv)
 
     ros::Subscriber odom_sub = nh.subscribe<nav_msgs::Odometry>("/rovio/odometry", 10, odomcb);
     ros::Subscriber dist_sub = nh.subscribe<geometry_msgs::PoseStamped>("/pose", 100,distcb);
+    ros::Subscriber state_sub = nh.subscribe<mavros_msgs::State>("/mavros/state", 100,statecb);
     
     ros::Publisher setpoint_pub = nh.advertise<geometry_msgs::PoseStamped>("/mavros/setpoint_position/local", 10);
     ros::Publisher mocap_pub = nh.advertise<geometry_msgs::PoseStamped>("/mavros/mocap/pose",10);
@@ -54,12 +62,20 @@ int main (int argc, char **argv)
 
     while ( ros::ok() )
     {
-        float k_p , k_i, k_d, set_alt;
-        nh.getParam("/vin_velocity_controller/k_p", k_p);
-        nh.getParam("/vin_velocity_controller/k_d", k_d);
-        nh.getParam("/vin_velocity_controller/k_i", k_i);
+        float pos_k_p, vel_k_p , vel_k_i, vel_k_d, set_alt;
+        nh.getParam("/vin_velocity_controller/pos_k_p", pos_k_p);
+        nh.getParam("/vin_velocity_controller/vel_k_p", vel_k_p);
+        nh.getParam("/vin_velocity_controller/vel_k_d", vel_k_d);
         nh.getParam("/vin_velocity_controller/set_alt", set_alt);
-
+        
+        if(mode_=="OFFBOARD")
+            nh.getParam("/vin_velocity_controller/vel_k_i", vel_k_i);
+        else
+        {
+            vel_k_i = 0;
+            err_sum_y = 0;
+            err_sum_x = 0;
+        }
         mocap.header.stamp = ros::Time::now();
         setpoint.header.stamp = ros::Time::now();
                
@@ -75,10 +91,29 @@ int main (int argc, char **argv)
             }
             else
             { 
-                float vel_sp_x = x_des - x;
-                float vel_sp_y = y - y_des;
-                mocap.pose.position.y = (vel_sp_y - vel_y)*k_p + (err_sum_y)*0.03*k_i + (vel_y_prev - vel_y)*30*k_d;//roll
-                mocap.pose.position.x = (vel_sp_x - vel_x)*k_p + (err_sum_x)*0.03*k_i + (vel_x_prev - vel_x)*30*k_d;//pitch
+                float vel_sp_x = (x_des - x)*pos_k_p;
+                float vel_sp_y = (y_des - y)*pos_k_p;
+               //  vel_sp_y = -0.0f;
+               // vel_sp_x = 0.0f; 
+
+                if ( vel_sp_x < -vel_thresh || vel_sp_x > vel_thresh || vel_sp_y < -vel_thresh || vel_sp_y > vel_thresh )
+                    vel_cross_flag= 1;
+
+                if ( vel_sp_y > vel_thresh )
+                    vel_sp_y = vel_thresh;
+                else if ( vel_sp_y < -vel_thresh )
+                    vel_sp_y = -vel_thresh;
+
+                if ( vel_sp_x > vel_thresh )
+                    vel_sp_x = vel_thresh;
+                else if ( vel_sp_x < -vel_thresh )
+                    vel_sp_x = -vel_thresh;
+
+                if ( vel_cross_flag==1 )
+                    cout<<"vel Threshold reached"<<endl;
+
+                mocap.pose.position.y = (vel_y - vel_sp_y)*vel_k_p + (err_sum_y)*0.03*vel_k_i + (vel_y - vel_y_prev)*30*vel_k_d;//roll
+                mocap.pose.position.x = (vel_x - vel_sp_x)*vel_k_p + (err_sum_x)*0.03*vel_k_i + (vel_x - vel_x_prev)*30*vel_k_d;//pitch
             } 
             setpoint.pose.position.z = set_alt;
 
