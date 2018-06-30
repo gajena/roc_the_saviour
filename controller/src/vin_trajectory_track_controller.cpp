@@ -25,6 +25,7 @@ string mode_;
 tf::Quaternion q;
 geometry_msgs::PoseStamped mocap;
 geometry_msgs::PoseStamped setpoint;
+geometry_msgs::PoseStamped vel_sp,pos_sp;
 visualization_msgs::MarkerArray traj;
 
 void odomcb(const nav_msgs::Odometry::ConstPtr &msg);
@@ -46,6 +47,9 @@ int main(int argc, char **argv)
 
     ros::Publisher setpoint_pub = nh.advertise<geometry_msgs::PoseStamped>("/mavros/setpoint_position/local", 10);
     ros::Publisher mocap_pub = nh.advertise<geometry_msgs::PoseStamped>("/mavros/mocap/pose", 10);
+    ros::Publisher vel_sp_pub = nh.advertise<geometry_msgs::PoseStamped>("/velocity_sp", 10);
+    ros::Publisher pos_sp_pub = nh.advertise<geometry_msgs::PoseStamped>("/position_sp", 10);
+
 
     ros::Rate loop_rate(30);
 
@@ -54,27 +58,35 @@ int main(int argc, char **argv)
 
     while (ros::ok())
     {
-        float pos_k_p, pos_k_i, vel_k_p, vel_k_i, vel_k_d, set_alt;
+       float pos_k_p,pos_k_i, vel_x_k_p , vel_x_k_i, vel_x_k_d, vel_y_k_p , vel_y_k_i, vel_y_k_d, set_alt;
         nh.getParam("/vin_trajectory_track_controller/pos_k_p", pos_k_p);
-        nh.getParam("/vin_trajectory_track_controller/vel_k_p", vel_k_p);
-        nh.getParam("/vin_trajectory_track_controller/vel_k_d", vel_k_d);
+        nh.getParam("/vin_trajectory_track_controller/vel_x_k_p", vel_x_k_p);
+        nh.getParam("/vin_trajectory_track_controller/vel_x_k_d", vel_x_k_d);
+        nh.getParam("/vin_trajectory_track_controller/vel_y_k_p", vel_y_k_p);
+        nh.getParam("/vin_trajectory_track_controller/vel_y_k_d", vel_y_k_d);
         nh.getParam("/vin_trajectory_track_controller/set_alt", set_alt);
         // nh.getParam("/vin_trajectory_track_controller/x_des", x_des);
         // nh.getParam("/vin_trajectory_track_controller/y_des", y_des);
+
+        mocap.header.stamp = ros::Time::now();
+        setpoint.header.stamp = ros::Time::now();
+        vel_sp.header.stamp = ros::Time::now();
+        pos_sp.header.stamp = ros::Time::now();
 
         for(int ii=0; ii < trajectory_size; ii++)
         {
             float x_sp = traj.markers[traj_marker_size - 1].points[ii].x;
             float y_sp = traj.markers[traj_marker_size - 1].points[ii].y;
-
+            
             if ( (x_sp - 0.1) < x && (x_sp + 0.1) > x ) 
                 x_des = traj.markers[traj_marker_size - 1].points[ii+1].x; 
             if ( (y_sp - 0.1) < y && (y_sp + 0.1) > y )
                 y_des = traj.markers[traj_marker_size - 1].points[ii+1].y;
             cout<<"traj"<<x_des<<","<<y_des<<endl;
         }
-        mocap.header.stamp = ros::Time::now();
-        setpoint.header.stamp = ros::Time::now();
+        
+        pos_sp.pose.position.x = x_des;
+        pos_sp.pose.position.y = y_des;
 
         if (odom_detected_flag == 1)
         {
@@ -95,7 +107,6 @@ int main(int argc, char **argv)
                 }
                 else
                 {
-
                     pos_k_i = 0;
                     err_sum_pos_y = 0;
                     err_sum_pos_x = 0;
@@ -103,19 +114,22 @@ int main(int argc, char **argv)
 
                 cout << "Error sum pos = " << err_sum_pos_x * 0.03 * pos_k_i << " , " << err_sum_pos_y * 0.03 * pos_k_i << endl;
 
+
                 vel_sp_x = (x_des - x) * pos_k_p + (err_sum_pos_x)*0.03 * pos_k_i;
                 vel_sp_y = (y_des - y) * pos_k_p + (err_sum_pos_y)*0.03 * pos_k_i;
 
                 err_sum_x = err_sum_x + (vel_x - vel_sp_x);
                 err_sum_y = err_sum_y + (vel_y - vel_sp_y);
 
-                if (mode_ == "OFFBOARD")
+                if(mode_=="OFFBOARD")
                 {
-                    nh.getParam("/vin_trajectory_track_controller/vel_k_i", vel_k_i);
+                    nh.getParam("/vin_trajectory_track_controller/vel_x_k_i", vel_x_k_i);
+                    nh.getParam("/vin_trajectory_track_controller/vel_y_k_i", vel_y_k_i);
                 }
                 else
                 {
-                    vel_k_i = 0;
+                    vel_x_k_i = 0;
+                    vel_y_k_i = 0;
                     err_sum_y = 0;
                     err_sum_x = 0;
                 }
@@ -139,8 +153,11 @@ int main(int argc, char **argv)
                 if (vel_cross_flag == 1)
                     cout << "vel Threshold reached" << endl;
 
-                mocap.pose.position.y = (vel_y - vel_sp_y) * vel_k_p + (err_sum_y)*0.03 * vel_k_i + (vel_y - vel_y_prev) * 30 * vel_k_d; //roll
-                mocap.pose.position.x = (vel_x - vel_sp_x) * vel_k_p + (err_sum_x)*0.03 * vel_k_i + (vel_x - vel_x_prev) * 30 * vel_k_d; //pitch
+                mocap.pose.position.y = (vel_y - vel_sp_y)*vel_y_k_p + (err_sum_y)*0.03*vel_y_k_i + (vel_y - vel_y_prev)*30*vel_y_k_d;//roll
+                mocap.pose.position.x = (vel_x - vel_sp_x)*vel_x_k_p + (err_sum_x)*0.03*vel_x_k_i + (vel_x - vel_x_prev)*30*vel_x_k_d;//pitch
+
+                vel_sp.pose.position.x = vel_sp_x;
+                vel_sp.pose.position.y = vel_sp_y;
             }
             setpoint.pose.position.z = set_alt;
 
@@ -177,6 +194,8 @@ int main(int argc, char **argv)
         }
         mocap.pose.position.z = dist;
         mocap_pub.publish(mocap);
+        vel_sp_pub.publish(vel_sp);
+        pos_sp_pub.publish(pos_sp);
         ros::spinOnce();
         loop_rate.sleep();
     }
