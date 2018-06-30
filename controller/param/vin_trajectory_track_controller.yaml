@@ -1,0 +1,8 @@
+pos_k_p: 0.23
+pos_k_i: 0.02
+vel_k_p: 0.3
+vel_k_d: 0.01
+vel_k_i: 0.03
+set_alt: 0.7
+x_des: 0.0
+y_des: 0.0

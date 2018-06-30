@@ -21,6 +21,10 @@ find_package(catkin REQUIRED COMPONENTS
 catkin_package()
 include_directories(${catkin_INCLUDE_DIRS})
 
+add_executable(vin_trajectory_track_controller src/vin_trajectory_track_controller.cpp )
+target_link_libraries(vin_trajectory_track_controller
+    ${catkin_LIBRARIES} ${aruco_LIBS})
+
 add_executable(vin_controller src/vin_controller.cpp )
 target_link_libraries(vin_controller
     ${catkin_LIBRARIES})

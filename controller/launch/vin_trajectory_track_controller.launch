@@ -1,0 +1,9 @@
+<launch>
+	<!-- <include file="$(find xsens_driver)/launch/xsens_driver.launch"/>
+	<include file="$(find bluefox2)/launch/single_node.launch"/>
+	<include file="$(find rovio)/launch/rovio_node.launch"/>
+	<include file="$(find warehouse_quad)/launch/zestimator.launch"/> -->
+	<node pkg="controller" type="vin_trajectory_track_controller" name="vin_trajectory_track_controller" clear_params="true" output="screen">
+		<rosparam file="$(find controller)/param/vin_trajectory_track_controller.yaml" />
+	</node>
+</launch> 
