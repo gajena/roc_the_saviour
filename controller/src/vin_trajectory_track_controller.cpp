@@ -19,6 +19,7 @@ using namespace std;
 int odom_detected_flag = 0, cross_flag = 0, vel_cross_flag = 0, init_imu_flag = 0, traj_marker_size = 0, trajectory_size = 0;
 float x = 0, y = 0, x_des = 0, y_des = 0, sp_thresh = 0.3, err_sum_x = 0.0, err_sum_y = 0.0, yaw = 5.7, dist, err_sum_pos_x = 0, err_sum_pos_y = 0;
 float vel_x = 0, vel_y = 0, vel_thresh = 1.0, vel_sp_x = 0, vel_sp_y = 0;
+int  index_x = 0, index_y = 0,yaw_reset = 0;
 double imu_yaw;
 string mode_;
 
@@ -53,20 +54,20 @@ int main(int argc, char **argv)
 
     ros::Rate loop_rate(30);
 
-    float vel_x_prev, vel_y_prev;
+    float vel_x_prev, vel_y_prev, x_prev, y_prev;
     int i = 0;
 
     while (ros::ok())
     {
-       float pos_k_p,pos_k_i, vel_x_k_p , vel_x_k_i, vel_x_k_d, vel_y_k_p , vel_y_k_i, vel_y_k_d, set_alt;
+       float pos_k_p, pos_k_d,pos_k_i, vel_x_k_p , vel_x_k_i, vel_x_k_d, vel_y_k_p , vel_y_k_i, vel_y_k_d, set_alt;
         nh.getParam("/vin_trajectory_track_controller/pos_k_p", pos_k_p);
+        nh.getParam("/vin_trajectory_track_controller/pos_k_d", pos_k_d);
         nh.getParam("/vin_trajectory_track_controller/vel_x_k_p", vel_x_k_p);
         nh.getParam("/vin_trajectory_track_controller/vel_x_k_d", vel_x_k_d);
         nh.getParam("/vin_trajectory_track_controller/vel_y_k_p", vel_y_k_p);
         nh.getParam("/vin_trajectory_track_controller/vel_y_k_d", vel_y_k_d);
         nh.getParam("/vin_trajectory_track_controller/set_alt", set_alt);
-        // nh.getParam("/vin_trajectory_track_controller/x_des", x_des);
-        // nh.getParam("/vin_trajectory_track_controller/y_des", y_des);
+        nh.getParam("/vin_trajectory_track_controller/yaw_reset", yaw_reset);
 
         mocap.header.stamp = ros::Time::now();
         setpoint.header.stamp = ros::Time::now();
@@ -78,12 +79,16 @@ int main(int argc, char **argv)
             float x_sp = traj.markers[traj_marker_size - 1].points[ii].x;
             float y_sp = traj.markers[traj_marker_size - 1].points[ii].y;
             
-            if ( (x_sp - 0.1) < x && (x_sp + 0.1) > x ) 
-                x_des = traj.markers[traj_marker_size - 1].points[ii+1].x; 
-            if ( (y_sp - 0.1) < y && (y_sp + 0.1) > y )
-                y_des = traj.markers[traj_marker_size - 1].points[ii+1].y;
-            cout<<"traj"<<x_des<<","<<y_des<<endl;
+            if ( (x_sp - 0.05) < x && (x_sp + 0.05) > x && ii >= index_x && (ii)<trajectory_size && (y_sp - 0.05) < y && (y_sp + 0.05) > y && ii>= index_y ) 
+            {
+                index_x = ii;
+                x_des = traj.markers[traj_marker_size - 1].points[ii].x; 
+         
+                index_y = ii;
+                y_des = traj.markers[traj_marker_size - 1].points[ii].y;
+            }
         }
+        cout<<"traj"<<x_des<<","<<x<<","<<y_des<<","<<y<<endl<<","<<index_x<<","<<index_y<<endl;
         
         pos_sp.pose.position.x = x_des;
         pos_sp.pose.position.y = y_des;
@@ -95,6 +100,8 @@ int main(int argc, char **argv)
             {
                 vel_x_prev = vel_x;
                 vel_y_prev = vel_y;
+                x_prev = x;
+                y_prev = y;
             }
             else
             {
@@ -115,9 +122,9 @@ int main(int argc, char **argv)
                 cout << "Error sum pos = " << err_sum_pos_x * 0.03 * pos_k_i << " , " << err_sum_pos_y * 0.03 * pos_k_i << endl;
 
 
-                vel_sp_x = (x_des - x) * pos_k_p + (err_sum_pos_x)*0.03 * pos_k_i;
-                vel_sp_y = (y_des - y) * pos_k_p + (err_sum_pos_y)*0.03 * pos_k_i;
-
+                vel_sp_x = (x_des - x) * pos_k_p + (err_sum_pos_x)*0.03 * pos_k_i + (x - x_prev)*30*pos_k_d;
+                vel_sp_y = (y_des - y) * pos_k_p + (err_sum_pos_y)*0.03 * pos_k_i + (y - y_prev)*30*pos_k_d;
+		cout<<"pos_d = "<<(y - y_prev)*30*pos_k_d<<endl;
                 err_sum_x = err_sum_x + (vel_x - vel_sp_x);
                 err_sum_y = err_sum_y + (vel_y - vel_sp_y);
 
@@ -163,10 +170,16 @@ int main(int argc, char **argv)
 
             vel_x_prev = vel_x;
             vel_y_prev = vel_y;
+            x_prev = x;
+            y_prev = y;
 
             i = i + 1;
 
-            yaw = imu_yaw;
+            if(yaw_reset == 1)
+            {
+                yaw = imu_yaw;
+                nh.setParam("/vin_trajectory_track_controller/yaw_reset", 0);
+            }
 
             q.setRPY(0, 0, yaw);
 
@@ -224,14 +237,10 @@ void statecb(const mavros_msgs::State::ConstPtr &msg)
 
 void imuCallback(const sensor_msgs::Imu::ConstPtr &msg)
 {
-    if (init_imu_flag == 0)
-    {
         tf::Quaternion q1(msg->orientation.x, msg->orientation.y, msg->orientation.z, msg->orientation.w);
         tf::Matrix3x3 m(q1);
         double r, p;
         m.getRPY(r, p, imu_yaw);
-        init_imu_flag = 1;
-    }
 }
 
 void traj_cb(const visualization_msgs::MarkerArray::ConstPtr &msg)

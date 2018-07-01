@@ -1,0 +1,3 @@
+roslaunch gripper_control position_control.launch
+rosservice call /joint_command -- rad 1 0
+sudo chmod a+rw /dev/ttyACM1

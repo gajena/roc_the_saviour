@@ -1,4 +1,5 @@
 pos_k_p: 0.35
+pos_k_d: 0.01
 pos_k_i: 0.12
 vel_x_k_p: 0.3
 vel_x_k_d: 0.01
@@ -7,5 +8,4 @@ vel_y_k_p: 0.3
 vel_y_k_d: 0.01
 vel_y_k_i: 0.0
 set_alt: 0.7
-x_des: 0.0
-y_des: 0.0
+yaw_reset: 1
