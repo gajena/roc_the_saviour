@@ -17,23 +17,17 @@
 using namespace std;
 
 /*flags for detection of msgs and threshold check*/
-int odom_detected_flag = 0, cross_flag = 0, vel_cross_flag = 0, init_imu_flag = 0, traj_marker_size = 0, trajectory_size = 0;
-float x = 0, y = 0, x_des = 0, y_des = 0, sp_thresh = 0.3, err_sum_x = 0.0, err_sum_y = 0.0, yaw = 5.7, dist, err_sum_pos_x = 0, err_sum_pos_y = 0;
-float vel_x = 0, vel_y = 0, vel_thresh = 1.0, vel_sp_x = 0, vel_sp_y = 0;
-int  index_x = 0, index_y = 0,yaw_reset = 0, off_flag =1, land_flag = 1, grip_status = 0, count_flag = 0;
+int odom_detected_flag = 0, cross_flag = 0, vel_cross_flag = 0, init_imu_flag = 0, aruco_detected_flag = 0;
+float x = 0, y = 0, x_des = 0, y_des = 0, err_sum_x = 0.0, err_sum_y = 0.0, yaw = 5.7, err_sum_pos_x = 0, err_sum_pos_y = 0;
+float vel_x = 0, vel_y = 0, vel_thresh = 1.0, vel_sp_x = 0, dist, sp_thresh = 0.3, vel_sp_y = 0, object_x, object_y;
+int  index_x = 0, index_y = 0,yaw_reset = 0, off_flag =1, land_flag = 1, grip_status = 0, traj_marker_size = 0, trajectory_size = 0;
 double imu_yaw;
-
 string mode_;
 
 tf::Quaternion q;
-geometry_msgs::PoseStamped mocap;
-geometry_msgs::PoseStamped setpoint;
-geometry_msgs::PoseStamped vel_sp,pos_sp;
+geometry_msgs::PoseStamped mocap, setpoint, vel_sp, pos_sp;
 visualization_msgs::MarkerArray traj;
-std_msgs::Int32 gripper_pos;
-std_msgs::Int32 mission_reset_flag;
-
-
+std_msgs::Int32 gripper_pos, mission_reset_flag;
 
 void odomcb(const nav_msgs::Odometry::ConstPtr &msg);
 void distcb(const geometry_msgs::PoseStamped::ConstPtr &msg);
@@ -41,18 +35,20 @@ void statecb(const mavros_msgs::State::ConstPtr &msg);
 void imuCallback(const sensor_msgs::Imu::ConstPtr &msg);
 void traj_cb(const visualization_msgs::MarkerArray::ConstPtr &msg);
 void gripper_state_cb(const std_msgs::Int32::ConstPtr &msg);
+void arucocb(const geometry_msgs::PoseStamped::ConstPtr& msg);
 
 int main(int argc, char **argv)
 {
     ros::init(argc, argv, "vin_mission_control");
     ros::NodeHandle nh;
 
-    ros::Subscriber odom_sub = nh.subscribe<nav_msgs::Odometry>("/rovio/odometry", 10, odomcb);
-    ros::Subscriber dist_sub = nh.subscribe<geometry_msgs::PoseStamped>("/pose", 100, distcb);
-    ros::Subscriber state_sub = nh.subscribe<mavros_msgs::State>("/mavros/state", 100, statecb);
-    ros::Subscriber traj_sub = nh.subscribe<visualization_msgs::MarkerArray>("trajectory_traject", 10, traj_cb);
+    ros::Subscriber odom_sub = nh.subscribe("/rovio/odometry", 10, odomcb);
+    ros::Subscriber dist_sub = nh.subscribe("/pose", 100, distcb);
+    ros::Subscriber state_sub = nh.subscribe("/mavros/state", 100, statecb);
+    ros::Subscriber traj_sub = nh.subscribe("trajectory_traject", 10, traj_cb);
     ros::Subscriber imu_sub = nh.subscribe("/mavros/imu/data", 100, imuCallback);
-    ros::Subscriber gripper_sub = nh.subscribe<std_msgs::Int32>("/gripper/grip_status", 10, gripper_state_cb);
+    ros::Subscriber gripper_sub = nh.subscribe("/gripper/grip_status", 10, gripper_state_cb);
+    ros::Subscriber aruco_sub = nh.subscribe("/aruco_single/pose", 10, arucocb);
 
     ros::Publisher setpoint_pub = nh.advertise<geometry_msgs::PoseStamped>("/mavros/setpoint_position/local", 10);
     ros::Publisher mocap_pub = nh.advertise<geometry_msgs::PoseStamped>("/mavros/mocap/pose", 10);
@@ -60,6 +56,7 @@ int main(int argc, char **argv)
     ros::Publisher pos_sp_pub = nh.advertise<geometry_msgs::PoseStamped>("/position_sp", 10);
     ros::Publisher gripper_sp_pub = nh.advertise<std_msgs::Int32>("/gripper/position", 10);
     ros::Publisher mission_reset_flag_pub = nh.advertise<std_msgs::Int32>("/mission_reset_flag", 10);
+    
     ros::ServiceClient set_mode_client = nh.serviceClient<mavros_msgs::SetMode>("mavros/set_mode");
 
     mavros_msgs::SetMode land_set_mode, offb_set_mode;
@@ -68,15 +65,15 @@ int main(int argc, char **argv)
 
     mission_reset_flag.data = 0;
 
-    double timer_=0,timer_land =0 ;
-    ros::Rate loop_rate(30);
-
+    double timer_=0, timer_land =0;
     float vel_x_prev, vel_y_prev, x_prev, y_prev;
     int i = 0;
 
+    ros::Rate loop_rate(30);
+
     while (ros::ok())
     {
-       float pos_k_p, pos_k_d,pos_k_i, vel_x_k_p , vel_x_k_i, vel_x_k_d, vel_y_k_p , vel_y_k_i, vel_y_k_d, set_alt;
+        float pos_k_p, pos_k_d,pos_k_i, vel_x_k_p , vel_x_k_i, vel_x_k_d, vel_y_k_p , vel_y_k_i, vel_y_k_d, set_alt;
         nh.getParam("/vin_mission_control/pos_k_p", pos_k_p);
         nh.getParam("/vin_mission_control/pos_k_d", pos_k_d);
         nh.getParam("/vin_mission_control/vel_x_k_p", vel_x_k_p);
@@ -93,7 +90,7 @@ int main(int argc, char **argv)
 
         if(mission_reset_flag.data ==1 && mode_=="AUTO.LAND")   
         {
-            if( set_mode_client.call(offb_set_mode) && offb_set_mode.response.mode_sent)
+            if(set_mode_client.call(offb_set_mode) && offb_set_mode.response.mode_sent)
             {
                 ROS_INFO("OFFBOARD enabled");
                 off_flag=1;
@@ -111,7 +108,6 @@ int main(int argc, char **argv)
             off_flag =0;
             }
 
-
             if(ros::Time::now().toSec()-timer_ < 12 )
             {
                 x_des = traj.markers[traj_marker_size - 1].points[0].x;
@@ -119,10 +115,11 @@ int main(int argc, char **argv)
 
                 if(ros::Time::now().toSec()-timer_ < 2)
                     setpoint.pose.position.z = 0.0f;
-		else if (ros::Time::now().toSec()-timer_ <10 )
+		        else if (ros::Time::now().toSec()-timer_ <10 )
               	    setpoint.pose.position.z = 0.0+(ros::Time::now().toSec()-timer_-2)*0.1;
-		else 
-		    setpoint.pose.position.z = 0.8;
+		        else 
+		            setpoint.pose.position.z = 0.8;
+
                 cout<<"Timer ="<<ros::Time::now().toSec()-timer_<<endl;
             }
             else
@@ -141,34 +138,49 @@ int main(int argc, char **argv)
                         y_des = traj.markers[traj_marker_size - 1].points[ii].y;
                     }
                 }
-                
-                if ((traj.markers[traj_marker_size - 1].points[trajectory_size-1].x - 0.1) < x && (traj.markers[traj_marker_size - 1].points[trajectory_size-1].x + 0.1) > x && (traj.markers[traj_marker_size - 1].points[trajectory_size-1].y - 0.1) < y && (traj.markers[traj_marker_size - 1].points[trajectory_size-1].y + 0.1) > y )
+
+                float pick_goal_x = traj.markers[traj_marker_size - 1].points[trajectory_size-1].x;
+                float pick_goal_y = traj.markers[traj_marker_size - 1].points[trajectory_size-1].y;
+
+                if(aruco_detected_flag == 1)
+                {
+                    pick_goal_x = x + object_x;
+                    pick_goal_y = y + object_y;
+
+                    aruco_detected_flag = 0;
+                }
+
+                if ((pick_goal_x - 0.1) < x && (pick_goal_x + 0.1) > x && (pick_goal_y - 0.1) < y && (pick_goal_y + 0.1) > y )
                 {    
                     if(land_flag == 1)
                     {
                         timer_land = ros::Time::now().toSec();
                         land_flag = 0;
-                    }      
-                    if(((ros::Time::now().toSec() - timer_land) >= 10.0))
+                    }
+
+                    if((ros::Time::now().toSec() - timer_land) >= 10.0)
                     {
-                         
                         setpoint.pose.position.z = 0.8-(ros::Time::now().toSec()-timer_land-10.0)*0.1;
                         cout<<"landing"<<endl;
+
                         if( (ros::Time::now().toSec()-timer_land >18) )
                         {
                             if( set_mode_client.call(land_set_mode) && land_set_mode.response.mode_sent )
                             {
                                 ROS_INFO("land enabled");
                                 ros::Duration(3).sleep();
+
                                 if(grip_status == 0)
                                 {
                                     gripper_pos.data = 1;
                                     gripper_sp_pub.publish(gripper_pos);
                                     ros::Duration(4).sleep();
+
                                     if(  mission_reset_flag.data == 0)
                                         mission_reset_flag.data = 1;
                                     else
                                         mission_reset_flag.data = 2;
+
                                     mission_reset_flag_pub.publish(mission_reset_flag);
                                     //off_flag = 1
                                 }
@@ -188,6 +200,7 @@ int main(int argc, char **argv)
                 }
             } 
         }
+
         cout<<"traj"<<x_des<<","<<x<<","<<y_des<<","<<y<<endl<<","<<index_x<<","<<index_y<<endl;
         
         pos_sp.pose.position.x = x_des;
@@ -195,7 +208,6 @@ int main(int argc, char **argv)
 
         if (odom_detected_flag == 1)
         {
-
             if (i == 0)
             {
                 vel_x_prev = vel_x;
@@ -224,7 +236,7 @@ int main(int argc, char **argv)
 
                 vel_sp_x = (x_des - x) * pos_k_p + (err_sum_pos_x)*0.03 * pos_k_i + (x - x_prev)*30*pos_k_d;
                 vel_sp_y = (y_des - y) * pos_k_p + (err_sum_pos_y)*0.03 * pos_k_i + (y - y_prev)*30*pos_k_d;
-		//cout<<"pos_d = "<<(y - y_prev)*30*pos_k_d<<endl;
+		        //cout<<"pos_d = "<<(y - y_prev)*30*pos_k_d<<endl;
                 err_sum_x = err_sum_x + (vel_x - vel_sp_x);
                 err_sum_y = err_sum_y + (vel_y - vel_sp_y);
 
@@ -266,7 +278,6 @@ int main(int argc, char **argv)
                 vel_sp.pose.position.x = vel_sp_x;
                 vel_sp.pose.position.y = vel_sp_y;
             }
-            
 
             vel_x_prev = vel_x;
             vel_y_prev = vel_y;
@@ -313,6 +324,7 @@ int main(int argc, char **argv)
         ros::spinOnce();
         loop_rate.sleep();
     }
+
     return 0;
 }
 
@@ -325,7 +337,6 @@ void odomcb(const nav_msgs::Odometry::ConstPtr &msg)
 
     odom_detected_flag = 1;
 }
-
 
 void distcb(const geometry_msgs::PoseStamped::ConstPtr &msg)
 {
@@ -357,3 +368,12 @@ void gripper_state_cb(const std_msgs::Int32::ConstPtr &msg)
     grip_status = msg->data;
     cout<<"grip_status = "<<grip_status<<endl;
 }
+
+void arucocb(const geometry_msgs::PoseStamped::ConstPtr& msg)
+{
+    object_y = -(msg->pose.position.x);
+    object_x = -(msg->pose.position.y);
+
+    aruco_detected_flag = 1;
+}
+
