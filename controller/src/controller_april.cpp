@@ -96,10 +96,10 @@ ros::Publisher tag_pose_pub = nh.advertise<geometry_msgs::PoseStamped>("/tag_pos
         if( april_detected_flag == 1)        
         {
 
-            //mavros_msgs::SetMode offb_set_mode;
-            //offb_set_mode.request.custom_mode = "OFFBOARD";
-            //mavros_msgs::CommandBool arm_cmd;
-            //arm_cmd.request.value = true;
+                //mavros_msgs::SetMode offb_set_mode;
+                //offb_set_mode.request.custom_mode = "OFFBOARD";
+                //mavros_msgs::CommandBool arm_cmd;
+                //arm_cmd.request.value = true;
             err_sum_x = err_sum_x + x;
             err_sum_y = err_sum_y + y;
 		if (reset ==1)

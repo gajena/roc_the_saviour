@@ -1,0 +1,13 @@
+<launch>
+	<include file="$(find xsens_driver)/launch/xsens_driver.launch"/>
+	<include file="$(find bluefox2)/launch/single_node.launch"/>
+	<include file="$(find rovio)/launch/rovio_node.launch"/>
+	<include file="$(find warehouse_quad)/launch/zestimator.launch"/>
+	<node pkg="ros_mapping_and_planning" type="test_waypoint" name="test_waypoint" clear_params="true" output="screen"/>
+	<node pkg="mav_trajectory_generation_ros" type="waypoint_node" name="waypoint_node" clear_params="true" output="screen"/>
+	<node pkg="controller" type="vin_mission_control" name="vin_mission_control" clear_params="true" output="screen">
+		<rosparam file="$(find controller)/param/vin_mission_control.yaml" />
+	</node>
+	<node pkg="gripper_control" type="gripper.py" name="gripper" clear_params="true" output="screen"/>
+
+</launch> 

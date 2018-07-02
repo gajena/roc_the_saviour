@@ -16,10 +16,15 @@ find_package(catkin REQUIRED COMPONENTS
   std_msgs
   tf
   nav_msgs
+  dynamixel_workbench_msgs
   )
 
 catkin_package()
 include_directories(${catkin_INCLUDE_DIRS})
+
+add_executable(vin_mission_control src/vin_mission_control.cpp )
+target_link_libraries(vin_mission_control
+    ${catkin_LIBRARIES} ${aruco_LIBS})
 
 add_executable(vin_trajectory_track_controller src/vin_trajectory_track_controller.cpp )
 target_link_libraries(vin_trajectory_track_controller

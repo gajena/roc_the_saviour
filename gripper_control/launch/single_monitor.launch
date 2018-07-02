@@ -2,7 +2,7 @@
  <arg name="use_ping"         default="false"/>
  <arg name="id"               default="1"/>
 
- <arg name="device_name"      default="/dev/ttyACM0"/>
+ <arg name="device_name"      default="/dev/dynamixel"/>
  <arg name="baud_rate"        default="57600"/>
 
  <arg name="scan_range"       default="200"/>
