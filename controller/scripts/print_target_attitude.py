@@ -47,6 +47,9 @@ class test:
 
         #Quadcopter imu subscriber init
         attitude_target_sub = rospy.Subscriber("/mavros/setpoint_raw/target_attitude", AttitudeTarget, self.attitude_target_sub_callback)
+        
+        self.aruco_inverted_pose_pub = rospy.Publisher("/attituide_setpoint", PoseStamped, queue_size=10)
+
 
     #Current state subscriber
     def state_subscriber_callback(self,state):
@@ -65,6 +68,13 @@ class test:
         print('pitch = '+ str(euler[1]))
         print('yaw = '+ str(euler[0]))
         print('\n')
+        inverted_pose = PoseStamped()
+        inverted_pose.header.stamp = rospy.Time.now()
+        inverted_pose.header.frame_id = "home"
+        inverted_pose.pose.position.x = euler[2]
+        inverted_pose.pose.position.y = euler[1]
+        inverted_pose.pose.position.z = euler[0]
+        self.aruco_inverted_pose_pub.publish(inverted_pose)
         '''
         self.body_wrt_ground_trans = self.body_wrt_ground_quat.transformation_matrix
         self.ground_wrt_body_trans =numpy.linalg.inv(self.body_wrt_ground_trans)

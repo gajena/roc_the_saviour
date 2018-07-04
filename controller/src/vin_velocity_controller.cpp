@@ -15,7 +15,7 @@
 using namespace std;
 
 /*flags for detection of aruco and threshold check*/
-int odom_detected_flag = 0,cross_flag=0, vel_cross_flag = 0, init_imu_flag = 0;
+int odom_detected_flag = 0,cross_flag=0, vel_cross_flag = 0, init_imu_flag = 0, yaw_reset = 0;
 float x = 0, y = 0, x_des = 0, y_des = 0, sp_thresh = 0.3, err_sum_x = 0.0, err_sum_y = 0.0, yaw = 5.7, dist, err_sum_pos_x = 0,err_sum_pos_y = 0;
 float vel_x = 0, vel_y = 0, vel_thresh = 1.0,vel_sp_x = 0,vel_sp_y = 0;
 double imu_yaw;
@@ -79,9 +79,10 @@ int main (int argc, char **argv)
     float vel_x_prev, vel_y_prev;
     int i=0;
 
+
     while ( ros::ok() )
     {
-        float pos_k_p,pos_k_i, vel_x_k_p , vel_x_k_i, vel_x_k_d, vel_y_k_p , vel_y_k_i, vel_y_k_d, set_alt;
+        float pos_k_p,pos_k_i, vel_x_k_p , vel_x_k_i, vel_x_k_d, vel_y_k_p , vel_y_k_i, vel_y_k_d, set_alt, vel_set_y,vel_set_x;
         nh.getParam("/vin_velocity_controller/pos_k_p", pos_k_p);
         
         nh.getParam("/vin_velocity_controller/vel_x_k_p", vel_x_k_p);
@@ -91,8 +92,9 @@ int main (int argc, char **argv)
         nh.getParam("/vin_velocity_controller/set_alt", set_alt);
         nh.getParam("/vin_velocity_controller/x_des", x_des);
         nh.getParam("/vin_velocity_controller/y_des", y_des);
-        
-
+	nh.getParam("/vin_velocity_controller/vel_set_y", vel_set_y);        
+	nh.getParam("/vin_mission_control/yaw_reset", yaw_reset);
+	nh.getParam("/vin_velocity_controller/vel_set_x", vel_set_x);
         mocap.header.stamp = ros::Time::now();
         setpoint.header.stamp = ros::Time::now();
         vel_sp.header.stamp = ros::Time::now();
@@ -129,8 +131,8 @@ int main (int argc, char **argv)
                  vel_sp_x = (x_des - x)*pos_k_p + (err_sum_pos_x)*0.03*pos_k_i;
                  vel_sp_y = (y_des - y)*pos_k_p + (err_sum_pos_y)*0.03*pos_k_i;
 
-                err_sum_x = err_sum_x + (vel_x - vel_sp_x);
-                err_sum_y = err_sum_y + (vel_y - vel_sp_y);
+                err_sum_x = err_sum_x + (vel_x - vel_set_x);
+                err_sum_y = err_sum_y + (vel_y - vel_set_y);
 
                
                 if(mode_=="OFFBOARD")
@@ -148,8 +150,8 @@ int main (int argc, char **argv)
 
                  cout<<"Error sum  = "<<err_sum_x*0.03*vel_x_k_i <<" , "<<err_sum_y*0.03*vel_y_k_i <<endl;
                 // cout<<"0.03 * KI"<<0.03*vel_k_i;
-                // vel_sp_y = -0.0f;
-               // vel_sp_x = 0.2f; 
+                 vel_sp_y = vel_set_y;
+               vel_sp_x = vel_set_x; 
 
                 if ( vel_sp_x < -vel_thresh || vel_sp_x > vel_thresh || vel_sp_y < -vel_thresh || vel_sp_y > vel_thresh )
                     vel_cross_flag= 1;
@@ -171,7 +173,7 @@ int main (int argc, char **argv)
                 mocap.pose.position.x = (vel_x - vel_sp_x)*vel_x_k_p + (err_sum_x)*0.03*vel_x_k_i + (vel_x - vel_x_prev)*30*vel_x_k_d;//pitch
 
                 vel_sp.pose.position.x = vel_sp_x;
-                vel_sp.pose.position.y = vel_sp_y;
+                vel_sp.pose.position.y = -vel_sp_y;
             } 
             setpoint.pose.position.z = set_alt;
 
@@ -180,8 +182,9 @@ int main (int argc, char **argv)
 
             i=i+1;
 
-            yaw = imu_yaw;
-
+            if(yaw_reset == 1)                                                                                         
+            {                                                                                                                        yaw = imu_yaw;                                                                                                       nh.setParam("/vin_mission_control/yaw_reset", 0);
+ } 
             q.setRPY(0, 0, yaw);
 
             setpoint.pose.orientation.z = q.z();

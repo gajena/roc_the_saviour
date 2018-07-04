@@ -84,7 +84,7 @@ class test:
 		self.gripper_position            = 0
 
 		self.gripper_position_raw_open = 1700
-		self.gripper_position_raw_close = 3200
+		self.gripper_position_raw_close = 3400
 		self.gripper_position_raw = self.gripper_position_raw_open
 
 
@@ -148,7 +148,7 @@ class test:
 
 			print("Present current = "+str(self.present_current))
 
-			if self.present_current>=80 and self.present_current<=300:
+			if self.present_current>=60 and self.present_current<=300:
 				self.grip_status = 1
 			else:
 				self.grip_status = 0

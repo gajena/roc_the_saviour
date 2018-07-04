@@ -17,11 +17,18 @@
 using namespace std;
 
 /*flags for detection of msgs and threshold check*/
-int odom_detected_flag = 0, cross_flag = 0, vel_cross_flag = 0, init_imu_flag = 0, aruco_detected_flag = 0;
+int odom_detected_flag = 0, cross_flag = 0, vel_cross_flag = 0, init_imu_flag = 0, aruco_detected_flag = 0, landing_flag = 0, arucocb_count = 0;
 float x = 0, y = 0, x_des = 0, y_des = 0, err_sum_x = 0.0, err_sum_y = 0.0, yaw = 5.7, err_sum_pos_x = 0, err_sum_pos_y = 0;
-float vel_x = 0, vel_y = 0, vel_thresh = 1.0, vel_sp_x = 0, dist, sp_thresh = 0.3, vel_sp_y = 0, object_x, object_y, pick_goal_x_cb, pick_goal_y_cb;
+float vel_x = 0, vel_y = 0, vel_thresh = 1.0, vel_sp_x = 0, dist, att_sp_thresh = 0.3, traj_sp_threshold = 0.08, vel_sp_y = 0, object_x, object_y, pick_goal_x_cb, pick_goal_y_cb, landing_threshold = 0.1;
 int  index_x = 0, index_y = 0,yaw_reset = 0, off_flag =1, grip_status = 0, traj_marker_size = 0, trajectory_size = 0, take_off_flag = 0;
 double imu_yaw;
+
+float landing_time = 6;
+float takeoff_time = 5;
+float landing_time_threshold = 4;
+float landing_height = 0.35;
+float gripping_sleep_time = 6;
+
 string mode_;
 
 tf::Quaternion q;
@@ -59,15 +66,14 @@ int main(int argc, char **argv)
     
     ros::ServiceClient set_mode_client = nh.serviceClient<mavros_msgs::SetMode>("mavros/set_mode");
 
-    mavros_msgs::SetMode take_off_mode, land_set_mode, offb_set_mode;
+    mavros_msgs::SetMode  land_set_mode, offb_set_mode;
     offb_set_mode.request.custom_mode = "OFFBOARD";
     land_set_mode.request.custom_mode = "AUTO.LAND";
-    take_off_mode.request.custom_mode = "AUTO.TAKEOFF";
 
     mission_reset_flag.data = 0;
 
     double timer_=0, timer_land =0;
-    float vel_x_prev, vel_y_prev, x_prev, y_prev;
+    float vel_x_prev, vel_y_prev, x_prev, y_prev, set_alt_temp = 0.8;
     int i = 0;
 
     ros::Rate loop_rate(30);
@@ -89,21 +95,18 @@ int main(int argc, char **argv)
         vel_sp.header.stamp = ros::Time::now();
         pos_sp.header.stamp = ros::Time::now();
 
-        if( (mission_reset_flag.data ==1 || take_off_flag == 1) && (mode_=="AUTO.LAND" || mode_=="AUTO.TAKEOFF" ))   
+        if( (mission_reset_flag.data ==1) && (mode_=="AUTO.LAND"))   
         {
-            if(mode_=="AUTO.LAND")
-                take_off_flag = 2;
-            
             
             if(set_mode_client.call(offb_set_mode) && offb_set_mode.response.mode_sent)
             {
-                ROS_INFO("OFFBOARD enabled");
+                cout<<"OFFBOARD enabled";
                 off_flag=1;
                 index_x = 0;
                 index_y = 0;
+                set_alt_temp = 0.8;
             }
         }
-        //cout<<"take_off_flag = "<<take_off_flag<<endl;
         if(mode_=="OFFBOARD" && traj_marker_size>0)
         {
             if( off_flag ==1)
@@ -112,27 +115,13 @@ int main(int argc, char **argv)
             off_flag =0;
             }
 
-            if(ros::Time::now().toSec()-timer_ < 10 )
+            if(ros::Time::now().toSec()-timer_ < takeoff_time )
             {
                 x_des = traj.markers[traj_marker_size - 1].points[0].x;
                 y_des = traj.markers[traj_marker_size - 1].points[0].y;
                 
-                /*if(take_off_flag == 0 ||take_off_flag == 2 )
-                {
-                    if( set_mode_client.call(take_off_mode) && take_off_mode.response.mode_sent )
-                    {
-                        take_off_flag = take_off_flag+1;
-                        cout<<"take_off_mode"<<endl;
-
-                    }
-                    
-                }
-                if (ros::Time::now().toSec()-timer_ <5 ) 
-                    setpoint.pose.position.z = 0.5;                                
-		        else if (ros::Time::now().toSec()-timer_ <8 )
-              	    setpoint.pose.position.z = 0.0+(ros::Time::now().toSec()-timer_)*0.1;
-		        else */
-		        setpoint.pose.position.z = 0.8;
+               
+		        setpoint.pose.position.z = set_alt;
 
                 cout<<"Timer ="<<ros::Time::now().toSec()-timer_<<endl;
             }
@@ -143,7 +132,7 @@ int main(int argc, char **argv)
                     float x_sp = traj.markers[traj_marker_size - 1].points[ii].x;
                     float y_sp = traj.markers[traj_marker_size - 1].points[ii].y;
                     
-                    if ( (x_sp - 0.06) < x && (x_sp + 0.06) > x && ii >= index_x && (ii)<trajectory_size && (y_sp - 0.06) < y && (y_sp + 0.06) > y && ii>= index_y ) 
+                    if ( (x_sp - traj_sp_threshold) < x && (x_sp + traj_sp_threshold) > x && ii >= index_x && (ii)<trajectory_size && (y_sp - traj_sp_threshold) < y && (y_sp + traj_sp_threshold) > y && ii>= index_y ) 
                     {
                         index_x = ii;
                         x_des = traj.markers[traj_marker_size - 1].points[ii].x; 
@@ -166,53 +155,62 @@ int main(int argc, char **argv)
 
                 }
 
-                if ((pick_goal_x - 0.1) < x && (pick_goal_x + 0.1) > x && (pick_goal_y - 0.1) < y && (pick_goal_y + 0.1) > y )
+                if ((pick_goal_x - landing_threshold) < x && (pick_goal_x + landing_threshold) > x && (pick_goal_y - landing_threshold) < y && (pick_goal_y + landing_threshold) > y )
                 {    
                     cout<<"inside landing"<<endl;
-
-                    if((ros::Time::now().toSec() - timer_land) >= 4.0)
+                    arucocb_count = arucocb_count + 1;
+                    if((ros::Time::now().toSec() - timer_land) >= landing_time_threshold)
                     {
-                        setpoint.pose.position.z = 0.8-(ros::Time::now().toSec()-timer_land-4.0)*0.15;
+                        landing_flag = 1;
+			            setpoint.pose.position.z = set_alt_temp-(ros::Time::now().toSec()-timer_land-landing_time_threshold)*((set_alt_temp-landing_height)/landing_time);
+                        
                         cout<<"landing"<<endl;
 
-                        if( (ros::Time::now().toSec()-timer_land >7) )
+                        if( (ros::Time::now().toSec()-timer_land) >(landing_time+landing_time_threshold) )
                         {
                             if( set_mode_client.call(land_set_mode) && land_set_mode.response.mode_sent )
                             {
                                 ROS_INFO("land enabled");
-                                ros::Duration(3).sleep();
 
                                 if(grip_status == 0)
                                 {
                                     gripper_pos.data = 1;
-cout<<"gripped"<<endl;
-                                    gripper_sp_pub.publish(gripper_pos);
-                                    ros::Duration(4).sleep();
-
-                                    if(  mission_reset_flag.data == 0)
-                                        mission_reset_flag.data = 1;
-                                    else
-                                        mission_reset_flag.data = 2;
-
-                                    mission_reset_flag_pub.publish(mission_reset_flag);
-                                    //off_flag = 1
+                                    cout<<"gripped"<<endl;
+                                    
                                 }
                                 else if (grip_status == 1)
                                 {
                                     gripper_pos.data = 0;
-                                    gripper_sp_pub.publish(gripper_pos);
-                                    ros::Duration(4).sleep();
-                                    mission_reset_flag.data = 2;
-                                    mission_reset_flag_pub.publish(mission_reset_flag);
                                 }
-                                
+
+                                //CHANGED HERE
+                                cout<<"Previus mision reset "<<mission_reset_flag.data<<endl;
+                                if(mission_reset_flag.data == 0)
+                                {
+                                    mission_reset_flag.data = 1;
+                                    cout<<"reseting mission"<<endl;
+                                }
+                                else
+                                {
+                                    mission_reset_flag.data = 2;
+                                    cout<<"DONE!"<<endl;
+                                    ros::Duration(10).sleep();
+                                }
+
+                                mission_reset_flag_pub.publish(mission_reset_flag);
+                                gripper_sp_pub.publish(gripper_pos);
+                                ros::Duration(gripping_sleep_time).sleep();
+
                             }
                         }
                         
                     }
                 }
                 else
-                timer_land = ros::Time::now().toSec();
+                {
+                    timer_land = ros::Time::now().toSec();
+                    set_alt_temp = setpoint.pose.position.z;
+                }
             } 
         }
 
@@ -291,7 +289,7 @@ cout<<"gripped"<<endl;
                 mocap.pose.position.x = (vel_x - vel_sp_x)*vel_x_k_p + (err_sum_x)*0.03*vel_x_k_i + (vel_x - vel_x_prev)*30*vel_x_k_d;//pitch
 
                 vel_sp.pose.position.x = vel_sp_x;
-                vel_sp.pose.position.y = vel_sp_y;
+                vel_sp.pose.position.y = -vel_sp_y;
             }
 
             vel_x_prev = vel_x;
@@ -312,17 +310,17 @@ cout<<"gripped"<<endl;
             setpoint.pose.orientation.z = q.z();
             setpoint.pose.orientation.w = q.w();
 
-            if (mocap.pose.position.x < -sp_thresh || mocap.pose.position.x > sp_thresh || mocap.pose.position.y < -sp_thresh || mocap.pose.position.y > sp_thresh)
+            if (mocap.pose.position.x < -att_sp_thresh || mocap.pose.position.x > att_sp_thresh || mocap.pose.position.y < -att_sp_thresh || mocap.pose.position.y > att_sp_thresh)
                 cross_flag = 1;
 
-            if (mocap.pose.position.x > sp_thresh)
-                mocap.pose.position.x = sp_thresh;
-            else if (mocap.pose.position.x < -sp_thresh)
-                mocap.pose.position.x = -sp_thresh;
-            if (mocap.pose.position.y < -sp_thresh)
-                mocap.pose.position.y = -sp_thresh;
-            else if (mocap.pose.position.y > sp_thresh)
-                mocap.pose.position.y = sp_thresh;
+            if (mocap.pose.position.x > att_sp_thresh)
+                mocap.pose.position.x = att_sp_thresh;
+            else if (mocap.pose.position.x < -att_sp_thresh)
+                mocap.pose.position.x = -att_sp_thresh;
+            if (mocap.pose.position.y < -att_sp_thresh)
+                mocap.pose.position.y = -att_sp_thresh;
+            else if (mocap.pose.position.y > att_sp_thresh)
+                mocap.pose.position.y = att_sp_thresh;
 
             if (cross_flag == 1)
                 cout << "Attitude Threshold reached" << endl;
@@ -386,11 +384,17 @@ void gripper_state_cb(const std_msgs::Int32::ConstPtr &msg)
 
 void arucocb(const geometry_msgs::PoseStamped::ConstPtr& msg)
 {
-    object_x = -(msg->pose.position.y); 
-    object_y = -(msg->pose.position.x);
-    pick_goal_x_cb = x + object_x;
-    pick_goal_y_cb = y + object_y;
-
-    aruco_detected_flag = 1;
+    if(landing_flag==0 && arucocb_count <100)
+    {
+        object_x = -(msg->pose.position.y); 
+    	object_y = -(msg->pose.position.x);
+	    if(object_x>-0.2 && object_x < 0.2 && object_y <0.2 && object_y >-0.2)
+    	{
+	        pick_goal_x_cb = x + object_x;
+    	    pick_goal_y_cb = y + object_y;
+            aruco_detected_flag = 1;
+            cout<<"x = "<<x<<"y ="<<y<<endl;
+        }
+        
+    }
 }
-

@@ -1,8 +1,5 @@
 <launch>
- 	<!--<include file="$(find xsens_driver)/launch/xsens_driver.launch"/>
-	<include file="$(find bluefox2)/launch/single_node.launch"/>
-	<include file="$(find rovio)/launch/rovio_node.launch"/>-->
-	<node pkg="gripper_control" type="gripper.py" name="gripper" clear_params="true"/>
+	<node pkg="gripper_control" type="gripper.py" name="gripper" clear_params="true" />
 
 	<include file="$(find warehouse_quad)/launch/zestimator.launch"/>
 	<include file="$(find aruco_ros)/launch/usb_cam.launch"/>
