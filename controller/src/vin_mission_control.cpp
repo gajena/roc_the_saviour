@@ -12,16 +12,17 @@
 #include <nav_msgs/Odometry.h>
 #include <mavros_msgs/State.h>
 #include <sensor_msgs/Imu.h>
-#include <visualization_msgs/MarkerArray.h>
 #include <std_msgs/Int32.h>
+#include <geometry_msgs/PoseArray.h>
+
 using namespace std;
 
 /*flags for detection of msgs and threshold check*/
 int odom_detected_flag = 0, cross_flag = 0, vel_cross_flag = 0, init_imu_flag = 0, aruco_detected_flag = 0, landing_flag = 0, arucocb_count = 0;
 float x = 0, y = 0, x_des = 0, y_des = 0, err_sum_x = 0.0, err_sum_y = 0.0, yaw = 5.7, err_sum_pos_x = 0, err_sum_pos_y = 0;
 float vel_x = 0, vel_y = 0, vel_thresh = 1.0, vel_sp_x = 0, dist, att_sp_thresh = 0.3, traj_sp_threshold = 0.08, vel_sp_y = 0, object_x, object_y, pick_goal_x_cb, pick_goal_y_cb, landing_threshold = 0.1;
-int  index_x = 0, index_y = 0,yaw_reset = 0, off_flag =1, grip_status = 0, traj_marker_size = 0, trajectory_size = 0, take_off_flag = 0;
-double imu_yaw;
+int  index_x = 0, index_y = 0,yaw_reset = 0, off_flag =1, grip_status = 0, trajectory_size = 0, take_off_flag = 0;
+double imu_yaw, yaw_set;
 
 float landing_time = 6;
 float takeoff_time = 5;
@@ -33,14 +34,14 @@ string mode_;
 
 tf::Quaternion q;
 geometry_msgs::PoseStamped mocap, setpoint, vel_sp, pos_sp;
-visualization_msgs::MarkerArray traj;
+geometry_msgs::PoseArray traj;
 std_msgs::Int32 gripper_pos, mission_reset_flag;
 
 void odomcb(const nav_msgs::Odometry::ConstPtr &msg);
 void distcb(const geometry_msgs::PoseStamped::ConstPtr &msg);
 void statecb(const mavros_msgs::State::ConstPtr &msg);
 void imuCallback(const sensor_msgs::Imu::ConstPtr &msg);
-void traj_cb(const visualization_msgs::MarkerArray::ConstPtr &msg);
+void traj_cb(const geometry_msgs::PoseArray::ConstPtr &msg);
 void gripper_state_cb(const std_msgs::Int32::ConstPtr &msg);
 void arucocb(const geometry_msgs::PoseStamped::ConstPtr& msg);
 
@@ -52,7 +53,7 @@ int main(int argc, char **argv)
     ros::Subscriber odom_sub = nh.subscribe("/rovio/odometry", 10, odomcb);
     ros::Subscriber dist_sub = nh.subscribe("/pose", 100, distcb);
     ros::Subscriber state_sub = nh.subscribe("/mavros/state", 100, statecb);
-    ros::Subscriber traj_sub = nh.subscribe("trajectory_traject", 10, traj_cb);
+    ros::Subscriber traj_sub = nh.subscribe("/trajectory_with_yaw", 10, traj_cb);
     ros::Subscriber imu_sub = nh.subscribe("/mavros/imu/data", 100, imuCallback);
     ros::Subscriber gripper_sub = nh.subscribe("/gripper/grip_status", 10, gripper_state_cb);
     ros::Subscriber aruco_sub = nh.subscribe("/aruco_single/pose", 10, arucocb);
@@ -107,7 +108,7 @@ int main(int argc, char **argv)
                 set_alt_temp = 0.8;
             }
         }
-        if(mode_=="OFFBOARD" && traj_marker_size>0)
+        if(mode_=="OFFBOARD" && trajectory_size>0)
         {
             if( off_flag ==1)
             {
@@ -117,8 +118,8 @@ int main(int argc, char **argv)
 
             if(ros::Time::now().toSec()-timer_ < takeoff_time )
             {
-                x_des = traj.markers[traj_marker_size - 1].points[0].x;
-                y_des = traj.markers[traj_marker_size - 1].points[0].y;
+                x_des = traj.poses[0].position.x;
+                y_des = traj.poses[0].position.y;
                 
                
 		        setpoint.pose.position.z = set_alt;
@@ -129,21 +130,52 @@ int main(int argc, char **argv)
             {
                 for(int ii=0; ii < trajectory_size; ii++)
                 {
-                    float x_sp = traj.markers[traj_marker_size - 1].points[ii].x;
-                    float y_sp = traj.markers[traj_marker_size - 1].points[ii].y;
+                    float x_sp = traj.poses[ii].position.x;
+                    float y_sp = traj.poses[ii].position.y;
+
+                    
+    
                     
                     if ( (x_sp - traj_sp_threshold) < x && (x_sp + traj_sp_threshold) > x && ii >= index_x && (ii)<trajectory_size && (y_sp - traj_sp_threshold) < y && (y_sp + traj_sp_threshold) > y && ii>= index_y ) 
                     {
                         index_x = ii;
-                        x_des = traj.markers[traj_marker_size - 1].points[ii].x; 
+                        x_des = traj.poses[ii].position.x; 
                  
                         index_y = ii;
-                        y_des = traj.markers[traj_marker_size - 1].points[ii].y;
+                        y_des = traj.poses[ii].position.y;
+
+                        tf::Quaternion q1(
+                        traj.poses[ii].orientation.x,
+                        traj.poses[ii].orientation.y,
+                        traj.poses[ii].orientation.z,
+                        traj.poses[ii].orientation.w);
+
+                        tf::Matrix3x3 m(q1);
+
+                        double r, p, yaw_traj;
+                        m.getRPY(r, p, yaw_traj);
+
+                        yaw_set = (imu_yaw-yaw_traj);  
+                    
+                        if(isnan(yaw_set))
+                            yaw_set=imu_yaw;
+                        else
+                        {
+                            if(yaw_set>3.14)
+                            {
+                                yaw_set = yaw_set - (3.14*2);
+                            }
+                            else if (yaw_set<-3.14)
+                            {
+                                yaw_set = yaw_set + (3.14*2);
+                            }
+                        }
+                        cout<<"yaw_set"<<(yaw_set)<<endl<<"imu_yaw="<<imu_yaw<<endl<<"yaw_traj"<<yaw_traj<<endl<<endl;
                     }
                 }
 
-                float pick_goal_x = traj.markers[traj_marker_size - 1].points[trajectory_size-1].x;
-                float pick_goal_y = traj.markers[traj_marker_size - 1].points[trajectory_size-1].y;
+                float pick_goal_x = traj.poses[trajectory_size-1].position.x;
+                float pick_goal_y = traj.poses[trajectory_size-1].position.y;
 
                 if(aruco_detected_flag == 1 &&  mission_reset_flag.data == 0)
                 {
@@ -266,7 +298,7 @@ int main(int argc, char **argv)
                     err_sum_x = 0;
                 }
 
-                // vel_sp_y = -0.0f;
+                // vel_sp_y = -0.0f;    
                 // vel_sp_x = 0.0f;
 
                 if (vel_sp_x < -vel_thresh || vel_sp_x > vel_thresh || vel_sp_y < -vel_thresh || vel_sp_y > vel_thresh)
@@ -304,6 +336,8 @@ int main(int argc, char **argv)
                 yaw = imu_yaw;
                 nh.setParam("/vin_mission_control/yaw_reset", 0);
             }
+            else
+                yaw = yaw_set;
 
             q.setRPY(0, 0, yaw);
 
@@ -369,11 +403,10 @@ void imuCallback(const sensor_msgs::Imu::ConstPtr &msg)
         m.getRPY(r, p, imu_yaw);
 }
 
-void traj_cb(const visualization_msgs::MarkerArray::ConstPtr &msg)
+void traj_cb(const geometry_msgs::PoseArray::ConstPtr &msg)
 {
     traj = *msg;
-    traj_marker_size = traj.markers.size();
-    trajectory_size = traj.markers[traj_marker_size - 1].points.size();
+    trajectory_size = traj.poses.size();
 }
 
 void gripper_state_cb(const std_msgs::Int32::ConstPtr &msg)
