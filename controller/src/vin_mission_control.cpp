@@ -19,8 +19,8 @@ using namespace std;
 /*flags for detection of msgs and threshold check*/
 int odom_detected_flag = 0, cross_flag = 0, vel_cross_flag = 0, init_imu_flag = 0, aruco_detected_flag = 0;
 float x = 0, y = 0, x_des = 0, y_des = 0, err_sum_x = 0.0, err_sum_y = 0.0, yaw = 5.7, err_sum_pos_x = 0, err_sum_pos_y = 0;
-float vel_x = 0, vel_y = 0, vel_thresh = 1.0, vel_sp_x = 0, dist, sp_thresh = 0.3, vel_sp_y = 0, object_x, object_y;
-int  index_x = 0, index_y = 0,yaw_reset = 0, off_flag =1, land_flag = 1, grip_status = 0, traj_marker_size = 0, trajectory_size = 0;
+float vel_x = 0, vel_y = 0, vel_thresh = 1.0, vel_sp_x = 0, dist, sp_thresh = 0.3, vel_sp_y = 0, object_x, object_y, pick_goal_x_cb, pick_goal_y_cb;
+int  index_x = 0, index_y = 0,yaw_reset = 0, off_flag =1, grip_status = 0, traj_marker_size = 0, trajectory_size = 0, take_off_flag = 0;
 double imu_yaw;
 string mode_;
 
@@ -59,9 +59,10 @@ int main(int argc, char **argv)
     
     ros::ServiceClient set_mode_client = nh.serviceClient<mavros_msgs::SetMode>("mavros/set_mode");
 
-    mavros_msgs::SetMode land_set_mode, offb_set_mode;
+    mavros_msgs::SetMode take_off_mode, land_set_mode, offb_set_mode;
     offb_set_mode.request.custom_mode = "OFFBOARD";
     land_set_mode.request.custom_mode = "AUTO.LAND";
+    take_off_mode.request.custom_mode = "AUTO.TAKEOFF";
 
     mission_reset_flag.data = 0;
 
@@ -88,18 +89,21 @@ int main(int argc, char **argv)
         vel_sp.header.stamp = ros::Time::now();
         pos_sp.header.stamp = ros::Time::now();
 
-        if(mission_reset_flag.data ==1 && mode_=="AUTO.LAND")   
+        if( (mission_reset_flag.data ==1 || take_off_flag == 1) && (mode_=="AUTO.LAND" || mode_=="AUTO.TAKEOFF" ))   
         {
+            if(mode_=="AUTO.LAND")
+                take_off_flag = 2;
+            
+            
             if(set_mode_client.call(offb_set_mode) && offb_set_mode.response.mode_sent)
             {
                 ROS_INFO("OFFBOARD enabled");
                 off_flag=1;
                 index_x = 0;
                 index_y = 0;
-                land_flag =1;
             }
         }
-
+        //cout<<"take_off_flag = "<<take_off_flag<<endl;
         if(mode_=="OFFBOARD" && traj_marker_size>0)
         {
             if( off_flag ==1)
@@ -108,17 +112,27 @@ int main(int argc, char **argv)
             off_flag =0;
             }
 
-            if(ros::Time::now().toSec()-timer_ < 12 )
+            if(ros::Time::now().toSec()-timer_ < 10 )
             {
                 x_des = traj.markers[traj_marker_size - 1].points[0].x;
                 y_des = traj.markers[traj_marker_size - 1].points[0].y;
+                
+                /*if(take_off_flag == 0 ||take_off_flag == 2 )
+                {
+                    if( set_mode_client.call(take_off_mode) && take_off_mode.response.mode_sent )
+                    {
+                        take_off_flag = take_off_flag+1;
+                        cout<<"take_off_mode"<<endl;
 
-                if(ros::Time::now().toSec()-timer_ < 2)
-                    setpoint.pose.position.z = 0.0f;
-		        else if (ros::Time::now().toSec()-timer_ <10 )
-              	    setpoint.pose.position.z = 0.0+(ros::Time::now().toSec()-timer_-2)*0.1;
-		        else 
-		            setpoint.pose.position.z = 0.8;
+                    }
+                    
+                }
+                if (ros::Time::now().toSec()-timer_ <5 ) 
+                    setpoint.pose.position.z = 0.5;                                
+		        else if (ros::Time::now().toSec()-timer_ <8 )
+              	    setpoint.pose.position.z = 0.0+(ros::Time::now().toSec()-timer_)*0.1;
+		        else */
+		        setpoint.pose.position.z = 0.8;
 
                 cout<<"Timer ="<<ros::Time::now().toSec()-timer_<<endl;
             }
@@ -142,28 +156,26 @@ int main(int argc, char **argv)
                 float pick_goal_x = traj.markers[traj_marker_size - 1].points[trajectory_size-1].x;
                 float pick_goal_y = traj.markers[traj_marker_size - 1].points[trajectory_size-1].y;
 
-                if(aruco_detected_flag == 1)
+                if(aruco_detected_flag == 1 &&  mission_reset_flag.data == 0)
                 {
-                    pick_goal_x = x + object_x;
-                    pick_goal_y = y + object_y;
+                    pick_goal_x = pick_goal_x_cb; 
+                    pick_goal_y = pick_goal_y_cb; 
 
-                    aruco_detected_flag = 0;
+                    x_des = pick_goal_x;
+                    y_des = pick_goal_y;
+
                 }
 
                 if ((pick_goal_x - 0.1) < x && (pick_goal_x + 0.1) > x && (pick_goal_y - 0.1) < y && (pick_goal_y + 0.1) > y )
                 {    
-                    if(land_flag == 1)
-                    {
-                        timer_land = ros::Time::now().toSec();
-                        land_flag = 0;
-                    }
+                    cout<<"inside landing"<<endl;
 
-                    if((ros::Time::now().toSec() - timer_land) >= 10.0)
+                    if((ros::Time::now().toSec() - timer_land) >= 4.0)
                     {
-                        setpoint.pose.position.z = 0.8-(ros::Time::now().toSec()-timer_land-10.0)*0.1;
+                        setpoint.pose.position.z = 0.8-(ros::Time::now().toSec()-timer_land-4.0)*0.15;
                         cout<<"landing"<<endl;
 
-                        if( (ros::Time::now().toSec()-timer_land >18) )
+                        if( (ros::Time::now().toSec()-timer_land >7) )
                         {
                             if( set_mode_client.call(land_set_mode) && land_set_mode.response.mode_sent )
                             {
@@ -173,6 +185,7 @@ int main(int argc, char **argv)
                                 if(grip_status == 0)
                                 {
                                     gripper_pos.data = 1;
+cout<<"gripped"<<endl;
                                     gripper_sp_pub.publish(gripper_pos);
                                     ros::Duration(4).sleep();
 
@@ -198,6 +211,8 @@ int main(int argc, char **argv)
                         
                     }
                 }
+                else
+                timer_land = ros::Time::now().toSec();
             } 
         }
 
@@ -371,8 +386,10 @@ void gripper_state_cb(const std_msgs::Int32::ConstPtr &msg)
 
 void arucocb(const geometry_msgs::PoseStamped::ConstPtr& msg)
 {
+    object_x = -(msg->pose.position.y); 
     object_y = -(msg->pose.position.x);
-    object_x = -(msg->pose.position.y);
+    pick_goal_x_cb = x + object_x;
+    pick_goal_y_cb = y + object_y;
 
     aruco_detected_flag = 1;
 }
