@@ -11,14 +11,15 @@
 #include <nav_msgs/Odometry.h>
 #include <mavros_msgs/State.h>
 #include <sensor_msgs/Imu.h>
+#include <math.h>
 
 using namespace std;
 
 /*flags for detection of aruco and threshold check*/
 int odom_detected_flag = 0,cross_flag=0, vel_cross_flag = 0, init_imu_flag = 0, yaw_reset = 0;
-float x = 0, y = 0, x_des = 0, y_des = 0, sp_thresh = 0.3, err_sum_x = 0.0, err_sum_y = 0.0, yaw = 5.7, dist, err_sum_pos_x = 0,err_sum_pos_y = 0;
+float x = 0, y = 0, x_des = 0, y_des = 0, sp_thresh = 0.3, err_sum_x = 0.0, err_sum_y = 0.0, yaw_sp = 5.7, dist, err_sum_pos_x = 0,err_sum_pos_y = 0;
 float vel_x = 0, vel_y = 0, vel_thresh = 1.0,vel_sp_x = 0,vel_sp_y = 0;
-double imu_yaw;
+double imu_yaw,yaw_init = -5.7;
 
 string mode_;
 
@@ -82,7 +83,7 @@ int main (int argc, char **argv)
 
     while ( ros::ok() )
     {
-        float pos_k_p,pos_k_i, vel_x_k_p , vel_x_k_i, vel_x_k_d, vel_y_k_p , vel_y_k_i, vel_y_k_d, set_alt, vel_set_y,vel_set_x;
+        float yaw_traj,pos_k_p,pos_k_i, vel_x_k_p , vel_x_k_i, vel_x_k_d, vel_y_k_p , vel_y_k_i, vel_y_k_d, set_alt, vel_set_y,vel_set_x;
         nh.getParam("/vin_velocity_controller/pos_k_p", pos_k_p);
         
         nh.getParam("/vin_velocity_controller/vel_x_k_p", vel_x_k_p);
@@ -92,9 +93,10 @@ int main (int argc, char **argv)
         nh.getParam("/vin_velocity_controller/set_alt", set_alt);
         nh.getParam("/vin_velocity_controller/x_des", x_des);
         nh.getParam("/vin_velocity_controller/y_des", y_des);
-	nh.getParam("/vin_velocity_controller/vel_set_y", vel_set_y);        
-	nh.getParam("/vin_mission_control/yaw_reset", yaw_reset);
-	nh.getParam("/vin_velocity_controller/vel_set_x", vel_set_x);
+	    nh.getParam("/vin_velocity_controller/vel_set_y", vel_set_y);        
+	    nh.getParam("/vin_mission_control/yaw_reset", yaw_reset);
+	    nh.getParam("/vin_velocity_controller/vel_set_x", vel_set_x);
+	    nh.getParam("/vin_velocity_controller/yaw_traj", yaw_traj);
         mocap.header.stamp = ros::Time::now();
         setpoint.header.stamp = ros::Time::now();
         vel_sp.header.stamp = ros::Time::now();
@@ -127,12 +129,13 @@ int main (int argc, char **argv)
                     err_sum_pos_x = 0;
                 }
 
+                float vel_sp_x_world = (x_des - x)*pos_k_p + (err_sum_pos_x)*0.03*pos_k_i;
+                float vel_sp_y_world = (y_des - y)*pos_k_p + (err_sum_pos_y)*0.03*pos_k_i;
+                vel_sp_x = cos(yaw_traj)*vel_sp_x_world + sin(yaw_traj)* vel_sp_y_world;
+                vel_sp_y = cos(yaw_traj)*vel_sp_y_world - sin(yaw_traj)* vel_sp_x_world;
 
-                 vel_sp_x = (x_des - x)*pos_k_p + (err_sum_pos_x)*0.03*pos_k_i;
-                 vel_sp_y = (y_des - y)*pos_k_p + (err_sum_pos_y)*0.03*pos_k_i;
-
-                err_sum_x = err_sum_x + (vel_x - vel_set_x);
-                err_sum_y = err_sum_y + (vel_y - vel_set_y);
+                err_sum_x = err_sum_x + (vel_x - vel_sp_x);
+                err_sum_y = err_sum_y + (vel_y - vel_sp_y);
 
                
                 if(mode_=="OFFBOARD")
@@ -150,8 +153,8 @@ int main (int argc, char **argv)
 
                  cout<<"Error sum  = "<<err_sum_x*0.03*vel_x_k_i <<" , "<<err_sum_y*0.03*vel_y_k_i <<endl;
                 // cout<<"0.03 * KI"<<0.03*vel_k_i;
-                 vel_sp_y = vel_set_y;
-               vel_sp_x = vel_set_x; 
+                //    vel_sp_y = vel_set_y;
+                //    vel_sp_x = vel_set_x; 
 
                 if ( vel_sp_x < -vel_thresh || vel_sp_x > vel_thresh || vel_sp_y < -vel_thresh || vel_sp_y > vel_thresh )
                     vel_cross_flag= 1;
@@ -169,8 +172,10 @@ int main (int argc, char **argv)
                 if ( vel_cross_flag==1 )
                     cout<<"vel Threshold reached"<<endl;
 
-                mocap.pose.position.y = (vel_y - vel_sp_y)*vel_y_k_p + (err_sum_y)*0.03*vel_y_k_i + (vel_y - vel_y_prev)*30*vel_y_k_d;//roll
-                mocap.pose.position.x = (vel_x - vel_sp_x)*vel_x_k_p + (err_sum_x)*0.03*vel_x_k_i + (vel_x - vel_x_prev)*30*vel_x_k_d;//pitch
+                
+
+                mocap.pose.position.y = ((vel_y - vel_sp_y)*vel_y_k_p + (err_sum_y)*0.03*vel_y_k_i + (vel_y - vel_y_prev)*30*vel_y_k_d);//roll
+                mocap.pose.position.x = ((vel_x - vel_sp_x)*vel_x_k_p + (err_sum_x)*0.03*vel_x_k_i + (vel_x - vel_x_prev)*30*vel_x_k_d);//pitch
 
                 vel_sp.pose.position.x = vel_sp_x;
                 vel_sp.pose.position.y = -vel_sp_y;
@@ -182,10 +187,14 @@ int main (int argc, char **argv)
 
             i=i+1;
 
-            if(yaw_reset == 1)                                                                                         
-            {                                                                                                                        yaw = imu_yaw;                                                                                                       nh.setParam("/vin_mission_control/yaw_reset", 0);
- } 
-            q.setRPY(0, 0, yaw);
+            if(yaw_reset == 1)
+            {
+                
+                yaw_init = imu_yaw;
+                nh.setParam("/vin_mission_control/yaw_reset", 0);
+            }
+            yaw_sp = yaw_init+yaw_traj;
+            q.setRPY(0, 0, yaw_sp);
 
             setpoint.pose.orientation.z = q.z();
             setpoint.pose.orientation.w = q.w();

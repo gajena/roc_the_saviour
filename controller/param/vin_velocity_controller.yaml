@@ -1,13 +1,14 @@
-pos_k_p: 0.35
-pos_k_i: 0.12
-vel_x_k_p: 0.28
+pos_k_p: 1.0
+pos_k_i: 0.0
+vel_x_k_p: 0.26
 vel_x_k_d: 0.02
-vel_x_k_i: 0.03
-vel_y_k_p: 0.26
+vel_x_k_i: 0.0
+vel_y_k_p: 0.28
 vel_y_k_d: 0.02
-vel_y_k_i: 0.0
+vel_y_k_i: 0.03
 set_alt: 0.8
 x_des: 0.0
 y_des: 0.0
 vel_set_y: 0.0
 vel_set_x: 0.0
+yaw_traj : 0.0
