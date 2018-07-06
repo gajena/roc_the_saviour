@@ -7,7 +7,7 @@
     <arg name="ref_frame"       default=""/>  <!-- leave empty and the pose will be published wrt param parent_name -->
     <arg name="corner_refinement" default="LINES" /> <!-- NONE, HARRIS, LINES, SUBPIX -->
 
-
+    <include file="$(find usb_cam)/launch/usb_cam-test.launch"/>
     <node pkg="aruco_ros" type="single" name="aruco_single">
         <remap from="/camera_info" to="/usb_cam/camera_info" />
         <remap from="/image" to="/usb_cam/image_raw" />

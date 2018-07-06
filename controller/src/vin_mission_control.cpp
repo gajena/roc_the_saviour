@@ -19,12 +19,12 @@
 using namespace std;
 
 /*flags for detection of msgs and threshold check*/
-int odom_detected_flag = 0, cross_flag = 0, vel_cross_flag = 0, init_imu_flag = 0, object_yaw_flag = 0;
+int odom_detected_flag = 0, cross_flag = 0, vel_cross_flag = 0, init_imu_flag = 0, object_yaw_flag = 0, tfmini_flag = 0;
 int aruco_detected_flag = 0, landing_flag = 0, update_set_alt_flag = 0,  arucocb_count = 0;
 float x = 0, y = 0, x_des = 0, y_des = 0, err_sum_x = 0.0, err_sum_y = 0.0, yaw_sp = 5.7, err_sum_pos_x = 0, err_sum_pos_y = 0;
 float vel_x = 0, vel_y = 0, vel_thresh = 1.0, vel_sp_x = 0, dist, att_sp_thresh = 0.3, traj_sp_threshold = 0.08;
 float vel_sp_y = 0, object_x, object_y, pick_goal_x_cb, pick_goal_y_cb, landing_threshold = 0.1, yaw_init = 5.7;
-int  index_x = 0, index_y = 0,yaw_reset = 0, off_flag =1, grip_status = 0, trajectory_size = 0, take_off_flag = 0;
+int  index_x = 0, index_y = 0,yaw_reset = 0, off_flag =1, grip_status = 0, trajectory_size = 0, take_off_flag = 0, distcb_count = 0;
 double imu_yaw, yaw_set,yaw_traj, yaw_marker, yaw_sp_temp;
 
 float landing_time = 7;
@@ -258,7 +258,7 @@ int main(int argc, char **argv)
         pos_sp.pose.position.x = x_des;
         pos_sp.pose.position.y = y_des;
 
-        if (odom_detected_flag == 1)
+        if (odom_detected_flag == 1 && tfmini_flag == 1)
         {
             if (i == 0)
             {
@@ -370,9 +370,10 @@ int main(int argc, char **argv)
             if (cross_flag == 1)
                 cout << "Attitude Threshold reached" << endl;
 
-            //cout << "pitch = " << mocap.pose.position.x << std::endl
-                 //<< "roll = " << mocap.pose.position.y << endl;
+            cout << "pitch = " << mocap.pose.position.x << std::endl
+                 << "roll = " << mocap.pose.position.y << endl;
             setpoint_pub.publish(setpoint);
+             tfmini_flag = 0;
         }
 
         mocap.pose.position.z = dist;
@@ -393,12 +394,28 @@ void odomcb(const nav_msgs::Odometry::ConstPtr &msg)
     vel_x = (msg->twist.twist.linear.x);
     vel_y = -(msg->twist.twist.linear.y);
 
-    odom_detected_flag = 1;
+    double vel_with_cov[36], pos_with_cov[36];
+
+    for(int iii = 0; iii<36; iii++)
+    {
+        vel_with_cov[iii] = fabs(msg->twist.covariance[iii]);
+        pos_with_cov[iii] = fabs(msg->pose.covariance[iii]);
+    }
+    sort(vel_with_cov,vel_with_cov+36);
+    sort(pos_with_cov,pos_with_cov+36);
+    if( vel_with_cov[35]<1 && pos_with_cov[35]<1)
+            odom_detected_flag = 1;
+        else
+            odom_detected_flag = 0;
 }
 
 void distcb(const geometry_msgs::PoseStamped::ConstPtr &msg)
 {
     dist = msg->pose.position.z;
+    distcb_count = distcb_count + 1;
+
+    if(distcb_count > 10)
+        tfmini_flag = 1;
 }
 
 void statecb(const mavros_msgs::State::ConstPtr &msg)
@@ -423,7 +440,6 @@ void traj_cb(const geometry_msgs::PoseArray::ConstPtr &msg)
 void gripper_state_cb(const std_msgs::Int32::ConstPtr &msg)
 {
     grip_status = msg->data;
-    cout<<"grip_status = "<<grip_status<<endl;
 }
 
 void arucocb(const geometry_msgs::PoseStamped::ConstPtr& msg)
@@ -450,26 +466,7 @@ void arucocb(const geometry_msgs::PoseStamped::ConstPtr& msg)
     
                 double r, p;
                 m1.getRPY(r, p, yaw_marker);
-    
-            //     yaw_set = (yaw-yaw_marker);  
-            
-            // if(isnan(yaw_set))
-            // yaw_set=yaw;
-            // else
-            // {
-            //     if(yaw_set>3.14)
-            //     {
-            //         yaw_set = yaw_set - (3.14*2);
-            //     }
-            //     else if (yaw_set<-3.14)
-            //     {
-            //         yaw_set = yaw_set + (3.14*2);
-            //     }
-            // }
-            // cout<<"yaw_marker"<<yaw_marker<<endl<<msg->pose.orientation.w<<endl;
         }
-        //cout<<"object_x"<<object_x<<endl<<"object_y"<<object_y<<endl;
-
         
     }
 }

@@ -100,8 +100,13 @@ void EKF::magCallback(const sensor_msgs::MagneticField::ConstPtr &msg)
 
 void EKF::lidarCallback(const sensor_msgs::Range::ConstPtr &msg)
 {
+	double thresh = 0;
+	if(msg->range<0.35)
+		thresh = 0.35;
+	else
+		thresh = msg->range;
 
-	double lidarDistance = lidarVal.getlidarFilteredData(msg->range);
+	double lidarDistance = lidarVal.getlidarFilteredData(thresh);
 
 	int goal = 1;
 	if (lidarDistance > 5)
@@ -118,7 +123,7 @@ void EKF::lidarCallback(const sensor_msgs::Range::ConstPtr &msg)
 			lidarState = INITIALIZED;
 			return;
 		}
-		ekfUpdateHeight(msg->range);
+		ekfUpdateHeight(thresh);
 		ROS_INFO("OK1");
 	}
 }
@@ -380,7 +385,11 @@ void EKF::ekfUpdateHeight(double lidarDistance)
 	pose.header.stamp = ros::Time::now();
 	pose.header.frame_id = "quadPose";
 
-	pose.pose.position.z = X_(15);
+	if(X_(15) < 0.35)
+		pose.pose.position.z = 0.35;
+	else
+		pose.pose.position.z = X_(15);
+	
 	posePub.publish(pose);
 }
 

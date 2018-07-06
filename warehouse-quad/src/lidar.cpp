@@ -51,13 +51,7 @@ double lidar::getlidarFilteredData(double distance)
 			lidar_set[9] = distance;
 			return lidarVal;
 		}
-
-		else
-		{
-			return no_lidar_data;
-		}
 	}
-	return no_lidar_data;
 }
 
 } // namespace HMDETECTION
