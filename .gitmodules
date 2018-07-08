@@ -1,0 +1,3 @@
+[submodule "ros_mapping_and_planning"]
+	path = ros_mapping_and_planning
+	url = https://github.com/gajena/ros_mapping_and_planning.git
