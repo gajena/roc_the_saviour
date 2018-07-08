@@ -22,7 +22,7 @@
 	<!-- tfmini -->
 	<include file="$(find tfmini_ros)/launch/tfmini.launch" />
 
-	<node name="main" pkg="height_estimator" type="main" /> 
+	<node name="main" pkg="estimator" type="main" /> 
 	
 
 

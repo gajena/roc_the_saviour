@@ -1,6 +1,6 @@
 <launch>
 
-	<include file="$(find height_estimator)/launch/zestimator.launch"/>
+	<include file="$(find estimator)/launch/zestimator.launch"/>
 	<include file="$(find aruco_ros)/launch/usb_cam.launch"/>
 
 	<node pkg="ros_mapping_and_planning" type="test_waypoint" name="test_waypoint" clear_params="true"/>
