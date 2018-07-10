@@ -1,3 +1,9 @@
 [submodule "ros_mapping_and_planning"]
 	path = ros_mapping_and_planning
 	url = https://github.com/gajena/ros_mapping_and_planning.git
+[submodule "px-ros-pkg"]
+	path = px-ros-pkg
+	url = https://github.com/gajena/px-ros-pkg.git
+[submodule "height_estimator/px-ros-pkg"]
+	path = height_estimator/px-ros-pkg
+	url = https://github.com/gajena/px-ros-pkg.git

@@ -14,7 +14,7 @@
 #include <sensor_msgs/Imu.h>
 #include <std_msgs/Int32.h>
 #include <geometry_msgs/PoseArray.h>
-#include <math.h>
+#include <px_comm/OpticalFlow.h>
 
 using namespace std;
 
@@ -22,16 +22,16 @@ using namespace std;
 int odom_detected_flag = 0, cross_flag = 0, vel_cross_flag = 0, init_imu_flag = 0, object_yaw_flag = 0, tfmini_flag = 0;
 int aruco_detected_flag = 0, landing_flag = 0, update_set_alt_flag = 0,  arucocb_count = 0;
 float x = 0, y = 0, x_des = 0, y_des = 0, err_sum_x = 0.0, err_sum_y = 0.0, yaw_sp = 5.7, err_sum_pos_x = 0, err_sum_pos_y = 0;
-float vel_x = 0, vel_y = 0, vel_thresh = 1.0, vel_sp_x = 0, dist, att_sp_thresh = 0.3, traj_sp_threshold = 0.08;
+float vel_x = 0, vel_y = 0, vel_thresh = 1.0, vel_sp_x = 0, z_dist, att_sp_thresh = 0.3, traj_sp_threshold = 0.08;
 float vel_sp_y = 0, object_x, object_y, pick_goal_x_cb, pick_goal_y_cb, landing_threshold = 0.1, yaw_init = 5.7;
 int  index_x = 0, index_y = 0,yaw_reset = 0, off_flag =1, grip_status = 0, trajectory_size = 0, take_off_flag = 0, distcb_count = 0;
-double imu_yaw, yaw_set,yaw_traj, yaw_marker, yaw_sp_temp;
+double x_dist, imu_yaw, yaw_set,yaw_traj, yaw_marker, yaw_sp_temp;
 
 float landing_time = 7;
 float takeoff_time = 5;
 float landing_time_threshold = 4;
 float yaw_alignment_time = 4;
-float landing_height = 0.35;
+float landing_height = 0.3;
 float gripping_sleep_time = 3;
 float land_mode_sleep_time = 3;
 string mode_;
@@ -48,6 +48,7 @@ void imuCallback(const sensor_msgs::Imu::ConstPtr &msg);
 void traj_cb(const geometry_msgs::PoseArray::ConstPtr &msg);
 void gripper_state_cb(const std_msgs::Int32::ConstPtr &msg);
 void arucocb(const geometry_msgs::PoseStamped::ConstPtr& msg);
+void flowcb(const px_comm::OpticalFlow::ConstPtr& msg);
 
 int main(int argc, char **argv)
 {
@@ -61,6 +62,7 @@ int main(int argc, char **argv)
     ros::Subscriber imu_sub = nh.subscribe("/mavros/imu/data", 100, imuCallback);
     ros::Subscriber gripper_sub = nh.subscribe("/gripper/grip_status", 10, gripper_state_cb);
     ros::Subscriber aruco_sub = nh.subscribe("/aruco_single/filtered_pose", 10, arucocb);
+    ros::Subscriber flow_sub = nh.subscribe("/px4flow/opt_flow", 10, flowcb);
 
     ros::Publisher setpoint_pub = nh.advertise<geometry_msgs::PoseStamped>("/mavros/setpoint_position/local", 10);
     ros::Publisher mocap_pub = nh.advertise<geometry_msgs::PoseStamped>("/mavros/mocap/pose", 10);
@@ -85,8 +87,9 @@ int main(int argc, char **argv)
 
     while (ros::ok())
     {
-        float pos_k_p, pos_k_d,pos_k_i, vel_x_k_p , vel_x_k_i, vel_x_k_d, vel_y_k_p , vel_y_k_i, vel_y_k_d, set_alt;
-        nh.getParam("/vin_mission_control/pos_k_p", pos_k_p);
+        float pos_k_p_x, pos_k_p_y, pos_k_d,pos_k_i, vel_x_k_p , vel_x_k_i, vel_x_k_d, vel_y_k_p , vel_y_k_i, vel_y_k_d, set_alt;
+        nh.getParam("/vin_mission_control/pos_k_p", pos_k_p_x);
+        nh.getParam("/vin_mission_control/pos_k_p", pos_k_p_y);
         nh.getParam("/vin_mission_control/pos_k_d", pos_k_d);
         nh.getParam("/vin_mission_control/vel_x_k_p", vel_x_k_p);
         nh.getParam("/vin_mission_control/vel_x_k_d", vel_x_k_d);
@@ -190,12 +193,13 @@ int main(int argc, char **argv)
 
                     if((ros::Time::now().toSec() - timer_land) >= yaw_alignment_time)
                     {
-                        if(object_yaw_flag == 0)
+                        if(object_yaw_flag == 0 )
                         {
                             yaw_sp_temp = imu_yaw-yaw_marker;
                             object_yaw_flag = 1;
                         }
-                        yaw_sp = yaw_sp_temp;
+                        if(mission_reset_flag.data == 0)
+                            yaw_sp = yaw_sp_temp;
                         cout<<"Aligning yaw over object"<<endl;
                         
                         if((ros::Time::now().toSec() - timer_land) >= (landing_time_threshold+yaw_alignment_time))
@@ -253,7 +257,7 @@ int main(int argc, char **argv)
             } 
         }
 
-        cout<<"traj"<<x_des<<","<<x<<","<<y_des<<","<<y<<endl<<","<<index_x<<","<<index_y<<endl;
+        cout<<"traj"<<x_des<<","<<x<<","<<y_des<<","<<y<<endl<<endl;
         
         pos_sp.pose.position.x = x_des;
         pos_sp.pose.position.y = y_des;
@@ -286,8 +290,8 @@ int main(int argc, char **argv)
                 //cout << "Error sum pos = " << err_sum_pos_x * 0.03 * pos_k_i << " , " << err_sum_pos_y * 0.03 * pos_k_i << endl;
 
 
-                float vel_sp_x_world = (x_des - x)*pos_k_p + (err_sum_pos_x)*0.03*pos_k_i;
-                float vel_sp_y_world = (y_des - y)*pos_k_p + (err_sum_pos_y)*0.03*pos_k_i;
+                float vel_sp_x_world = (x_des - x)*pos_k_p_x + (err_sum_pos_x)*0.03*pos_k_i;
+                float vel_sp_y_world = (y_des - y)*pos_k_p_y + (err_sum_pos_y)*0.03*pos_k_i;
                 vel_sp_x = cos(yaw_traj)*vel_sp_x_world + sin(yaw_traj)* vel_sp_y_world;
                 vel_sp_y = cos(yaw_traj)*vel_sp_y_world - sin(yaw_traj)* vel_sp_x_world;
 
@@ -370,13 +374,18 @@ int main(int argc, char **argv)
             if (cross_flag == 1)
                 cout << "Attitude Threshold reached" << endl;
 
-            cout << "pitch = " << mocap.pose.position.x << std::endl
-                 << "roll = " << mocap.pose.position.y << endl;
+
+            /*check for obstacles in front  */
+            if(x_dist < 0.7 )
+                mocap.pose.position.x = 0.2 * ( 0.7 - x_dist  );     
+
+            // cout << "pitch = " << mocap.pose.position.x << std::endl
+            //      << "roll = " << mocap.pose.position.y << endl;
             setpoint_pub.publish(setpoint);
              tfmini_flag = 0;
         }
 
-        mocap.pose.position.z = dist;
+        mocap.pose.position.z = z_dist;
         mocap_pub.publish(mocap);
         vel_sp_pub.publish(vel_sp);
         pos_sp_pub.publish(pos_sp);
@@ -411,7 +420,7 @@ void odomcb(const nav_msgs::Odometry::ConstPtr &msg)
 
 void distcb(const geometry_msgs::PoseStamped::ConstPtr &msg)
 {
-    dist = msg->pose.position.z;
+    z_dist = msg->pose.position.z;
     distcb_count = distcb_count + 1;
 
     if(distcb_count > 10)
@@ -445,16 +454,16 @@ void gripper_state_cb(const std_msgs::Int32::ConstPtr &msg)
 void arucocb(const geometry_msgs::PoseStamped::ConstPtr& msg)
 {
     double current_heading = yaw_init-imu_yaw;
-    if(landing_flag==0 && arucocb_count <100)
+    if(landing_flag==0 )
     {
         object_x = -(cos(current_heading)*(msg->pose.position.y)+sin(current_heading)*(msg->pose.position.x)); 
     	object_y = -(cos(current_heading)*(msg->pose.position.x)-sin(current_heading)*(msg->pose.position.y));
-	    if(object_x>-0.2 && object_x < 0.2 && object_y <0.2 && object_y >-0.2)
+	    if(object_x>-0.2 && object_x < 0.2 && object_y <0.2 && object_y >-0.2 && arucocb_count <100)
     	{
 	        pick_goal_x_cb = x + object_x;
     	    pick_goal_y_cb = y + object_y;
             aruco_detected_flag = 1;
-            cout<<"x = "<<x<<"y ="<<y<<endl;
+            // cout<<"x = "<<object_x<<"y = "<<object_y<<"arucocb_count = "<<arucocb_count<<endl;
 
              tf::Quaternion q2(
                 msg->pose.orientation.x,
@@ -469,4 +478,24 @@ void arucocb(const geometry_msgs::PoseStamped::ConstPtr& msg)
         }
         
     }
+}
+
+void flowcb(const px_comm::OpticalFlow::ConstPtr& msg)
+{
+    double x_dist_temp = msg->ground_distance;
+    double x_dist_median [16];
+    
+    for( int i =0; i<16; i++)
+        x_dist_median[i] = x_dist_temp;
+
+    sort(x_dist_median,x_dist_median+10);
+
+    if ((x_dist_temp > (x_dist_median[8] - 0.3)) && (x_dist_temp < (x_dist_median[8] + 0.3)))
+        x_dist = x_dist_temp;
+    
+    if(x_dist < 0.1)
+        x_dist = 2.0;
+    
+    // cout<<"x_dist = "<<x_dist<<endl;
+
 }

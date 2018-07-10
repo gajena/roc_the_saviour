@@ -17,6 +17,7 @@ find_package(catkin REQUIRED COMPONENTS
   tf
   nav_msgs
   dynamixel_workbench_msgs
+  px_comm
   )
 
 catkin_package()
