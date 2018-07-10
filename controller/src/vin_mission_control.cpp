@@ -20,12 +20,12 @@ using namespace std;
 
 /*flags for detection of msgs and threshold check*/
 int odom_detected_flag = 0, cross_flag = 0, vel_cross_flag = 0, init_imu_flag = 0, object_yaw_flag = 0, tfmini_flag = 0;
-int aruco_detected_flag = 0, landing_flag = 0, update_set_alt_flag = 0,  arucocb_count = 0;
+int aruco_detected_flag = 0, landing_flag = 0, update_set_alt_flag = 0,  arucocb_count = 0, flow_flag = 0;
 float x = 0, y = 0, x_des = 0, y_des = 0, err_sum_x = 0.0, err_sum_y = 0.0, yaw_sp = 5.7, err_sum_pos_x = 0, err_sum_pos_y = 0;
 float vel_x = 0, vel_y = 0, vel_thresh = 1.0, vel_sp_x = 0, z_dist, att_sp_thresh = 0.3, traj_sp_threshold = 0.08;
 float vel_sp_y = 0, object_x, object_y, pick_goal_x_cb, pick_goal_y_cb, landing_threshold = 0.1, yaw_init = 5.7;
 int  index_x = 0, index_y = 0,yaw_reset = 0, off_flag =1, grip_status = 0, trajectory_size = 0, take_off_flag = 0, distcb_count = 0;
-double x_dist, imu_yaw, yaw_set,yaw_traj, yaw_marker, yaw_sp_temp;
+double x_dist = 2.0, imu_yaw, yaw_set,yaw_traj, yaw_marker, yaw_sp_temp;
 
 float landing_time = 7;
 float takeoff_time = 5;
@@ -376,13 +376,14 @@ int main(int argc, char **argv)
 
 
             /*check for obstacles in front  */
-            if(x_dist < 0.7 )
-                mocap.pose.position.x = 0.2 * ( 0.7 - x_dist  );     
+            if(x_dist < 0.7 && flow_flag ==1 )
+                mocap.pose.position.x = 0.1 * ( 0.7 - x_dist  );     
 
             // cout << "pitch = " << mocap.pose.position.x << std::endl
             //      << "roll = " << mocap.pose.position.y << endl;
             setpoint_pub.publish(setpoint);
              tfmini_flag = 0;
+             flow_flag = 0;
         }
 
         mocap.pose.position.z = z_dist;
@@ -495,7 +496,7 @@ void flowcb(const px_comm::OpticalFlow::ConstPtr& msg)
     
     if(x_dist < 0.1)
         x_dist = 2.0;
-    
+    flow_flag = 1;
     // cout<<"x_dist = "<<x_dist<<endl;
 
 }
