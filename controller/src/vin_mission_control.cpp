@@ -28,7 +28,7 @@ int  index_x = 0, index_y = 0,yaw_reset = 0, off_flag =1, grip_status = 0, traje
 double x_dist = 2.0, imu_yaw, yaw_set,yaw_traj, yaw_marker, yaw_sp_temp;
 
 float landing_time = 7;
-float takeoff_time = 5;
+float takeoff_time = 6;
 float landing_time_threshold = 4;
 float yaw_alignment_time = 4;
 float landing_height = 0.3;
@@ -37,7 +37,7 @@ float land_mode_sleep_time = 3;
 string mode_;
 
 tf::Quaternion q;
-geometry_msgs::PoseStamped mocap, setpoint, vel_sp, pos_sp;
+geometry_msgs::PoseStamped mocap, setpoint, vel_sp, pos_sp, goal_sp;
 geometry_msgs::PoseArray traj;
 std_msgs::Int32 gripper_pos, mission_reset_flag;
 
@@ -70,6 +70,7 @@ int main(int argc, char **argv)
     ros::Publisher pos_sp_pub = nh.advertise<geometry_msgs::PoseStamped>("/position_sp", 10);
     ros::Publisher gripper_sp_pub = nh.advertise<std_msgs::Int32>("/gripper/position", 10);
     ros::Publisher mission_reset_flag_pub = nh.advertise<std_msgs::Int32>("/mission_reset_flag", 10);
+    ros::Publisher goal_pub = nh.advertise<geometry_msgs::PoseStamped>("/costmap_node/goal", 10);
     
     ros::ServiceClient set_mode_client = nh.serviceClient<mavros_msgs::SetMode>("mavros/set_mode");
 
@@ -88,8 +89,8 @@ int main(int argc, char **argv)
     while (ros::ok())
     {
         float pos_k_p_x, pos_k_p_y, pos_k_d,pos_k_i, vel_x_k_p , vel_x_k_i, vel_x_k_d, vel_y_k_p , vel_y_k_i, vel_y_k_d, set_alt;
-        nh.getParam("/vin_mission_control/pos_k_p", pos_k_p_x);
-        nh.getParam("/vin_mission_control/pos_k_p", pos_k_p_y);
+        nh.getParam("/vin_mission_control/pos_k_p_x", pos_k_p_x);
+        nh.getParam("/vin_mission_control/pos_k_p_y", pos_k_p_y);
         nh.getParam("/vin_mission_control/pos_k_d", pos_k_d);
         nh.getParam("/vin_mission_control/vel_x_k_p", vel_x_k_p);
         nh.getParam("/vin_mission_control/vel_x_k_d", vel_x_k_d);
@@ -108,6 +109,8 @@ int main(int argc, char **argv)
         setpoint.header.stamp = ros::Time::now();
         vel_sp.header.stamp = ros::Time::now();
         pos_sp.header.stamp = ros::Time::now();
+        goal_sp.header.stamp = ros::Time::now();
+        goal_sp.header.frame_id = "map";
 
         if( (mission_reset_flag.data ==1) && (mode_=="AUTO.LAND"))   
         {
@@ -131,8 +134,8 @@ int main(int argc, char **argv)
 
             if(ros::Time::now().toSec()-timer_ < takeoff_time )
             {
-                // x_des = traj.poses[0].position.x;
-                // y_des = traj.poses[0].position.y;
+                x_des = traj.poses[0].position.x;
+                y_des = traj.poses[0].position.y;
                 
                 
 		        setpoint.pose.position.z = set_alt;
@@ -167,9 +170,10 @@ int main(int argc, char **argv)
 
                         double r, p;
                         m.getRPY(r, p, yaw_traj);
+                        yaw_traj = 0;
                         yaw_sp = (yaw_init+yaw_traj);
 
-                        cout<<"yaw_sp"<<yaw_sp<<endl<<"yaw_init="<<yaw_init<<endl<<"yaw_traj"<<yaw_traj<<endl<<endl;
+                        cout<<"imu_yaw"<<imu_yaw<<endl<<"yaw_init="<<yaw_init<<endl<<"yaw_traj"<<yaw_traj<<endl<<endl;
                     }
                 }
 
@@ -261,6 +265,9 @@ int main(int argc, char **argv)
         
         pos_sp.pose.position.x = x_des;
         pos_sp.pose.position.y = y_des;
+
+        goal_sp.pose.position.x = 4;
+        goal_sp.pose.position.y = 0;
 
         if (odom_detected_flag == 1 && tfmini_flag == 1)
         {
@@ -376,20 +383,20 @@ int main(int argc, char **argv)
 
 
             /*check for obstacles in front  */
-            if(x_dist < 0.7 && flow_flag ==1 )
+            if(x_dist < 0.7 && flow_flag ==1 && x_dist >0.02 )
                 mocap.pose.position.x = 0.1 * ( 0.7 - x_dist  );     
 
             // cout << "pitch = " << mocap.pose.position.x << std::endl
             //      << "roll = " << mocap.pose.position.y << endl;
             setpoint_pub.publish(setpoint);
              tfmini_flag = 0;
-             flow_flag = 0;
         }
 
         mocap.pose.position.z = z_dist;
         mocap_pub.publish(mocap);
         vel_sp_pub.publish(vel_sp);
         pos_sp_pub.publish(pos_sp);
+        goal_pub.publish(goal_sp);
         ros::spinOnce();
         loop_rate.sleep();
     }
@@ -413,7 +420,7 @@ void odomcb(const nav_msgs::Odometry::ConstPtr &msg)
     }
     sort(vel_with_cov,vel_with_cov+36);
     sort(pos_with_cov,pos_with_cov+36);
-    if( vel_with_cov[35]<1 && pos_with_cov[35]<1)
+    if( vel_with_cov[35]<5.0 && pos_with_cov[35]<5.0)
             odom_detected_flag = 1;
         else
             odom_detected_flag = 0;

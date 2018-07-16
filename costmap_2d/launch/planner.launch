@@ -1,0 +1,5 @@
+<launch>
+<rosparam file="$(find costmap_2d)/launch/costmap.yaml" command="load" ns="/costmap_node/costmap" />
+<node pkg="global_planner" type="planner" name="costmap_node" output="screen" >
+</node>
+</launch>

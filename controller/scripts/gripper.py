@@ -83,7 +83,7 @@ class test:
 		#0 is open, 1 is close
 		self.gripper_position            = 0
 
-		self.gripper_position_raw_open = 1700
+		self.gripper_position_raw_open = 1400
 		self.gripper_position_raw_close = 4000
 		self.gripper_position_raw = self.gripper_position_raw_open
 

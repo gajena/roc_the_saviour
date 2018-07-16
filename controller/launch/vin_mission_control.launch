@@ -2,8 +2,9 @@
 
 	<include file="$(find estimator)/launch/zestimator.launch"/>
 	<include file="$(find aruco_ros)/launch/usb_cam.launch"/>
+	<include file="$(find costmap_2d)/launch/planner.launch"/>
+	<include file="$(find px4flow)/launch/px4flow.launch"/>
 
-	<node pkg="ros_mapping_and_planning" type="test_waypoint" name="test_waypoint" clear_params="true"/>
 	<node pkg="mav_trajectory_generation_ros" type="waypoint_node" name="waypoint_node" clear_params="true" />
 	<node pkg="controller" type="aruco_median_filter.py" name="aruco_median_filter" clear_params="true"/>
 	<node pkg="controller" type="gripper.py" name="gripper" clear_params="true" />

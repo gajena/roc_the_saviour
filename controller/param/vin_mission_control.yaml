@@ -1,9 +1,10 @@
-pos_k_p: 1.0
+pos_k_p_x: 1.5
+pos_k_p_y: 1.3
 pos_k_d: 0.0
 pos_k_i: 0.0
-vel_x_k_p: 0.26
+vel_x_k_p: 0.28
 vel_x_k_d: 0.02
-vel_x_k_i: 0.0
+vel_x_k_i: 0.03
 vel_y_k_p: 0.28
 vel_y_k_d: 0.02
 vel_y_k_i: 0.03

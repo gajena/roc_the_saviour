@@ -38,7 +38,7 @@
         <param name="camera_name" type="string" value="$(arg camera_name)"/>
         <param name="calib_url" type="string" value="$(arg calib_url)"/>
         <param name="fps" type="double" value="$(arg fps)"/>
-        <param name="idpf" type="int" value="1"/>
+        <param name="idpf" type="int" value="0"/>
         <param name="aec" type="bool" value="$(arg aec)"/>
         <param name="expose_us" type="int" value="$(arg expose_us)"/>
         <param name="agc" type="bool" value="$(arg aec)"/>
@@ -50,9 +50,9 @@
         <param name="wbp" type="int" value="$(arg wbp)"/>
         <param name="request" type="int" value="$(arg request)"/>
         <param name="mm" type="int" value="$(arg mm)"/>
-	<param name="r_gain" type="int" value="2"/>
-         <param name="g_gain" type="int" value="2"/>
-	 <param name="b_gain" type="int" value="2"/>
+	<param name="r_gain" type="int" value="3"/>
+         <param name="g_gain" type="int" value="3"/>
+	 <param name="b_gain" type="int" value="3"/>
         <param name="image_raw/compressed/jpeg_quality" type="int" value="$(arg jpeg_quality)"/>
         <remap from="/$(arg camera)/image_raw" to="/camera/image_raw"/>
     </node>
