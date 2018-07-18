@@ -99,19 +99,21 @@ int main(int argc, char **argv)
         nh.getParam("/vin_mission_control/set_alt", set_alt);
         nh.getParam("/vin_mission_control/yaw_reset", yaw_reset);
 
-        if(update_set_alt_flag==0)                                      // so that it will start only in OFF BOARD MODE
+        // initialize setting height for landing mode
+        if(update_set_alt_flag==0)                                      
         {
             set_alt_temp = set_alt;
             update_set_alt_flag=1;
         }
 
-        mocap.header.stamp = ros::Time::now();                          // set all time as ros time
+        mocap.header.stamp = ros::Time::now();                          
         setpoint.header.stamp = ros::Time::now();
         vel_sp.header.stamp = ros::Time::now();
         pos_sp.header.stamp = ros::Time::now();
         goal_sp.header.stamp = ros::Time::now();
         goal_sp.header.frame_id = "map";
 
+        // resetting after landing
         if( (mission_reset_flag.data ==1) && (mode_=="AUTO.LAND"))   
         {
             
@@ -124,6 +126,8 @@ int main(int argc, char **argv)
                 set_alt_temp = set_alt;
             }
         }
+
+        // mission planner for offboard mode 
         if(mode_=="OFFBOARD" && trajectory_size>0)
         {
             if( off_flag ==1)
@@ -132,13 +136,14 @@ int main(int argc, char **argv)
             off_flag =0;
             }
 
-            if(ros::Time::now().toSec()-timer_ < takeoff_time )         // To start take off after some time
+            // take-off
+            if(ros::Time::now().toSec()-timer_ < takeoff_time )     
             {
                 x_des = traj.poses[0].position.x;
                 y_des = traj.poses[0].position.y;
-                
-                
-		        setpoint.pose.position.z = set_alt;                     // To set height of the drone
+
+                // set height setpoint for mission
+                setpoint.pose.position.z = set_alt;                     
 
                 cout<<"Timer ="<<ros::Time::now().toSec()-timer_<<endl;
             }
@@ -149,19 +154,19 @@ int main(int argc, char **argv)
                     float x_sp = traj.poses[ii].position.x;
                     float y_sp = traj.poses[ii].position.y;
 
-                    
-    
-                    
-                    if ( (x_sp - traj_sp_threshold) < x && (x_sp + traj_sp_threshold) > x  && (y_sp - traj_sp_threshold) < y && (y_sp + traj_sp_threshold) > y && ii+1<trajectory_size )        // x  & y are current x & y co-ordinates & traj_sp_threshold is the area in which quad is present right now & x_sp & y_sp are co-ordinates out of this threshold area
+                    // x  & y are current x & y co-ordinates & traj_sp_threshold is threshold for next position sp & x_sp & y_sp are co-ordinate of trajectory
+                    if ( (x_sp - traj_sp_threshold) < x && (x_sp + traj_sp_threshold) > x  && (y_sp - traj_sp_threshold) < y && (y_sp + traj_sp_threshold) > y && ii+1<trajectory_size )   
                     {
+                        // next desired pose from trajectory
+
                         // index_x = ii;
-                        x_des = traj.poses[ii+1].position.x;        //next point in which drone should go
+                        x_des = traj.poses[ii+1].position.x;        
                  
                         // index_y = ii;
                         y_des = traj.poses[ii+1].position.y;
 
                         tf::Quaternion q1(
-                        traj.poses[ii+1].orientation.x,             //next orientation of the drone
+                        traj.poses[ii+1].orientation.x,             
                         traj.poses[ii+1].orientation.y, 
                         traj.poses[ii+1].orientation.z,
                         traj.poses[ii+1].orientation.w);
@@ -169,23 +174,25 @@ int main(int argc, char **argv)
                         tf::Matrix3x3 m(q1);
 
                         double r, p;
-                        m.getRPY(r, p, yaw_traj);                   // yaw_init is the intial yaw at which the quad is ; yaw_traj is by which it has to move ; yaw_sp is set point yaw
+                        m.getRPY(r, p, yaw_traj);                   
                         yaw_traj = 0;
+                        // yaw_init is the intial yaw at which the MAV is ; yaw_traj yaw from trajectory ; yaw_sp is yaw setpoint
                         yaw_sp = (yaw_init+yaw_traj);
 
                         cout<<"imu_yaw"<<imu_yaw<<endl<<"yaw_init="<<yaw_init<<endl<<"yaw_traj"<<yaw_traj<<endl<<endl;
                     }
                 }
 
-                float pick_goal_x = traj.poses[trajectory_size-1].position.x;           // goal position is aruco tag didn't detected
+                // destinantion if no object found
+                float pick_goal_x = traj.poses[trajectory_size-1].position.x;           
                 float pick_goal_y = traj.poses[trajectory_size-1].position.y;
 
-                if(aruco_detected_flag == 1 &&  mission_reset_flag.data == 0)           // if aruco tag detected; mission reset flag = 0 means drone didn't landed yet
+                if(aruco_detected_flag == 1 &&  mission_reset_flag.data == 0)      // if object detected; mission reset flag = 0 means MAV didn't landed yet
                 {
-                    pick_goal_x = pick_goal_x_cb;                                       // set goal after tag detection
+                    pick_goal_x = pick_goal_x_cb;                                  // set object picking destination after object detection
                     pick_goal_y = pick_goal_y_cb; 
 
-                    x_des = pick_goal_x;                                                // set that postion as destination for quad to land
+                    x_des = pick_goal_x;                                           // set that postion as next destination for MAV to land
                     y_des = pick_goal_y;
 
                 }
@@ -193,13 +200,13 @@ int main(int argc, char **argv)
                 if ((pick_goal_x - landing_threshold) < x && (pick_goal_x + landing_threshold) > x && (pick_goal_y - landing_threshold) < y && (pick_goal_y + landing_threshold) > y )
                 {    
                     cout<<"Stabilizing over object"<<endl;
-                    arucocb_count = arucocb_count + 1;                                  // To count how many number of times aruco tag has been detected
+                    arucocb_count = arucocb_count + 1;                // To count how many number of times object has been detected
 
                     if((ros::Time::now().toSec() - timer_land) >= yaw_alignment_time)
                     {
                         if(object_yaw_flag == 0 )
                         {
-                            yaw_sp_temp = imu_yaw-yaw_marker;                           // yaw angle of quad w.r.t tag
+                            yaw_sp_temp = imu_yaw-yaw_marker;        // yaw angle of MAV w.r.t object
                             object_yaw_flag = 1;
                             object_yaw_flag = 1;
                         }
@@ -207,16 +214,17 @@ int main(int argc, char **argv)
                             yaw_sp = yaw_sp_temp;
                         cout<<"Aligning yaw over object"<<endl;
                         
-                        if((ros::Time::now().toSec() - timer_land) >= (landing_time_threshold+yaw_alignment_time))      // calculating landing velocity
+                        if((ros::Time::now().toSec() - timer_land) >= (landing_time_threshold+yaw_alignment_time))    // time to stablize and land
                         {
                             landing_flag = 1;
                             setpoint.pose.position.z = set_alt_temp-(ros::Time::now().toSec()-timer_land-landing_time_threshold-yaw_alignment_time)*((set_alt_temp-landing_height)/landing_time);
                             
                             cout<<"Landing"<<endl;
 
+                            // time before land mode request
                             if( (ros::Time::now().toSec()-timer_land) >(landing_time+landing_time_threshold+yaw_alignment_time) )
                             {
-                                if( set_mode_client.call(land_set_mode) && land_set_mode.response.mode_sent )           // if the quad has landed
+                                if( set_mode_client.call(land_set_mode) && land_set_mode.response.mode_sent )      // request landing mode and landed
                                 {
                                     ROS_INFO("land enabled");
                                     ros::Duration(land_mode_sleep_time).sleep();
@@ -231,16 +239,16 @@ int main(int argc, char **argv)
                                         gripper_pos.data = 0;
                                     }
 
-                                    //CHANGED HERE
+                                    // CHANGED HERE
                                     cout<<"Previus mision reset "<<mission_reset_flag.data<<endl;
                                     if(mission_reset_flag.data == 0)
                                     {
-                                        mission_reset_flag.data = 1;                                // set initial position as goal position
+                                        mission_reset_flag.data = 1; // landed once
                                         cout<<"reseting mission"<<endl;
                                     }
                                     else
                                     {
-                                        mission_reset_flag.data = 2;
+                                        mission_reset_flag.data = 2; // landed twice
                                         cout<<"DONE!"<<endl;
                                         ros::Duration(10).sleep();
                                     }
@@ -257,24 +265,26 @@ int main(int argc, char **argv)
                 else
                 {
                     timer_land = ros::Time::now().toSec();
-                    set_alt_temp = setpoint.pose.position.z;                                    // setting height set point on drone
+                    set_alt_temp = setpoint.pose.position.z;  // setting last height as new set point on MAV
                 }
             } 
         }
 
         cout<<"traj"<<x_des<<","<<x<<","<<y_des<<","<<y<<endl<<endl;
         
-        pos_sp.pose.position.x = x_des;                                                        // setting x and y destination position of drone
+        // publisher for position setpoints
+        pos_sp.pose.position.x = x_des; 
         pos_sp.pose.position.y = y_des;
 
+        // goal publisher for planner
         goal_sp.pose.position.x = 4;
         goal_sp.pose.position.y = 0;
 
-        if (odom_detected_flag == 1 && tfmini_flag == 1)                                        // if odometry & tf mini are working properly
+        if (odom_detected_flag == 1 && tfmini_flag == 1)    // if odometry & tf mini are working properly
         {
             if (i == 0)
             {
-                vel_x_prev = vel_x;                                                             // saving velocity once for PID
+                vel_x_prev = vel_x;     // saving velocity once for PID
                 vel_y_prev = vel_y;
                 x_prev = x;
                 y_prev = y;
@@ -284,47 +294,45 @@ int main(int argc, char **argv)
                 err_sum_pos_x = err_sum_pos_x + (x_des - x);
                 err_sum_pos_y = err_sum_pos_y + (y_des - y);
 
-                if (mode_ == "OFFBOARD")                                                        // i should start only in off board mode or else error will accumulate
+                if (mode_ == "OFFBOARD")          // i should start only in off board mode or else error will accumulate
                 {
                     nh.getParam("/vin_mission_control/pos_k_i", pos_k_i);
                 }
                 else
                 {
-                    pos_k_i = 0;                                                                 // i is 0 in onboard mode 
+                    pos_k_i = 0;            
                     err_sum_pos_y = 0;
                     err_sum_pos_x = 0;
                 }
 
                 //cout << "Error sum pos = " << err_sum_pos_x * 0.03 * pos_k_i << " , " << err_sum_pos_y * 0.03 * pos_k_i << endl;
 
-
+                // velocity setpoints in world frame
                 float vel_sp_x_world = (x_des - x)*pos_k_p_x + (err_sum_pos_x)*0.03*pos_k_i;
                 float vel_sp_y_world = (y_des - y)*pos_k_p_y + (err_sum_pos_y)*0.03*pos_k_i;
+                
+                // velocity setpoints in MAV frame
                 vel_sp_x = cos(yaw_traj)*vel_sp_x_world + sin(yaw_traj)* vel_sp_y_world;
                 vel_sp_y = cos(yaw_traj)*vel_sp_y_world - sin(yaw_traj)* vel_sp_x_world;
 
-                
-		        //cout<<"pos_d = "<<(y - y_prev)*30*pos_k_d<<endl;
                 err_sum_x = err_sum_x + (vel_x - vel_sp_x);
                 err_sum_y = err_sum_y + (vel_y - vel_sp_y);
 
-                if(mode_=="OFFBOARD")                                                           // i should start only in off board mode or else error will accumulate
+                if(mode_=="OFFBOARD")            // i should start only in off board mode or else error will accumulate
                 {
                     nh.getParam("/vin_mission_control/vel_x_k_i", vel_x_k_i);
                     nh.getParam("/vin_mission_control/vel_y_k_i", vel_y_k_i);
                 }
                 else
                 {
-                    vel_x_k_i = 0;                                                              // i is 0 in onboard mode 
+                    vel_x_k_i = 0;                         
                     vel_y_k_i = 0;
                     err_sum_y = 0;
                     err_sum_x = 0;
                 }
 
-                // vel_sp_y = -0.0f;    
-                // vel_sp_x = 0.0f;
-
-                if (vel_sp_x < -vel_thresh || vel_sp_x > vel_thresh || vel_sp_y < -vel_thresh || vel_sp_y > vel_thresh)     // set point velocity should not exceed certain threshold
+                // set point velocity should not exceed certain threshold
+                if (vel_sp_x < -vel_thresh || vel_sp_x > vel_thresh || vel_sp_y < -vel_thresh || vel_sp_y > vel_thresh)  
                     vel_cross_flag = 1;
 
                 if (vel_sp_y > vel_thresh)
@@ -340,21 +348,23 @@ int main(int argc, char **argv)
                 if (vel_cross_flag == 1)
                     cout << "vel Threshold reached" << endl;
 
-                mocap.pose.position.y = ((vel_y - vel_sp_y)*vel_y_k_p + (err_sum_y)*0.03*vel_y_k_i + (vel_y - vel_y_prev)*30*vel_y_k_d);        //roll
-                mocap.pose.position.x = ((vel_x - vel_sp_x)*vel_x_k_p + (err_sum_x)*0.03*vel_x_k_i + (vel_x - vel_x_prev)*30*vel_x_k_d);        //pitch
+                //roll
+                mocap.pose.position.y = ((vel_y - vel_sp_y)*vel_y_k_p + (err_sum_y)*0.03*vel_y_k_i + (vel_y - vel_y_prev)*30*vel_y_k_d);
+                //pitch
+                mocap.pose.position.x = ((vel_x - vel_sp_x)*vel_x_k_p + (err_sum_x)*0.03*vel_x_k_i + (vel_x - vel_x_prev)*30*vel_x_k_d);        
 
                 vel_sp.pose.position.x = vel_sp_x;
                 vel_sp.pose.position.y = -vel_sp_y;
             }
 
-            vel_x_prev = vel_x;                                  // saving previous velocity for PID
+            vel_x_prev = vel_x;                // saving previous velocity for PID
             vel_y_prev = vel_y;
             x_prev = x;
             y_prev = y;
 
             i = i + 1;
 
-            if(yaw_reset == 1)                                   // to set initial orientation of the drone
+            if(yaw_reset == 1)                 // to set initial orientation of the MAV
             {
                 
                 yaw_init = imu_yaw;
@@ -370,7 +380,7 @@ int main(int argc, char **argv)
             if (mocap.pose.position.x < -att_sp_thresh || mocap.pose.position.x > att_sp_thresh || mocap.pose.position.y < -att_sp_thresh || mocap.pose.position.y > att_sp_thresh)
                 cross_flag = 1;
 
-            if (mocap.pose.position.x > att_sp_thresh)          // pitch on altitude angle threshold (roll and pitch)
+            if (mocap.pose.position.x > att_sp_thresh) // threshold  on altitude angle (roll and pitch)
                 mocap.pose.position.x = att_sp_thresh;
             else if (mocap.pose.position.x < -att_sp_thresh)
                 mocap.pose.position.x = -att_sp_thresh;
