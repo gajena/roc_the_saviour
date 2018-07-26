@@ -50,9 +50,9 @@
         <param name="wbp" type="int" value="$(arg wbp)"/>
         <param name="request" type="int" value="$(arg request)"/>
         <param name="mm" type="int" value="$(arg mm)"/>
-	<param name="r_gain" type="int" value="3"/>
-         <param name="g_gain" type="int" value="3"/>
-	 <param name="b_gain" type="int" value="3"/>
+	<param name="r_gain" type="int" value="2"/>
+         <param name="g_gain" type="int" value="2"/>
+	 <param name="b_gain" type="int" value="2"/>
         <param name="image_raw/compressed/jpeg_quality" type="int" value="$(arg jpeg_quality)"/>
         <remap from="/$(arg camera)/image_raw" to="/camera/image_raw"/>
     </node>

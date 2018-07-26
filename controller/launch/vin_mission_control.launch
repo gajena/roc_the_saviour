@@ -1,14 +1,14 @@
 <launch>
 
 	<include file="$(find estimator)/launch/zestimator.launch"/>
-	<include file="$(find aruco_ros)/launch/usb_cam.launch"/>
-	<include file="$(find costmap_2d)/launch/planner.launch"/>
+	<!-- <include file="$(find aruco_ros)/launch/usb_cam.launch"/> -->
 	<include file="$(find px4flow)/launch/px4flow.launch"/>
 
-	<node pkg="mav_trajectory_generation_ros" type="waypoint_node" name="waypoint_node" clear_params="true" />
-	<node pkg="controller" type="aruco_median_filter.py" name="aruco_median_filter" clear_params="true"/>
-	<node pkg="controller" type="gripper.py" name="gripper" clear_params="true" />
-	<node pkg="controller" type="vin_mission_control" name="vin_mission_control" clear_params="true" output="screen">
+	<node pkg="robot_exploration" type="frontier_detection" name="robot_exploration" clear_params="true" respawn="true"/>
+	<node pkg="mav_trajectory_generation_ros" type="waypoint_node" name="waypoint_node" clear_params="true" respawn="true"/>
+	<!-- <node pkg="controller" type="aruco_median_filter.py" name="aruco_median_filter" clear_params="true"/> -->
+	<!-- <node pkg="controller" type="gripper.py" name="gripper" clear_params="true" /> -->
+	<node pkg="controller" type="vin_mission_control" name="vin_mission_control" clear_params="true" output="screen" respawn="true">
 		<rosparam file="$(find controller)/param/vin_mission_control.yaml" />
 	</node>
 

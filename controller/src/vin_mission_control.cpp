@@ -1,34 +1,20 @@
-#include "ros/ros.h"
-#include "std_msgs/String.h"
-#include "geometry_msgs/PoseStamped.h"
-#include "mavros_msgs/AttitudeTarget.h"
-#include <mavros_msgs/CommandBool.h>
-#include <mavros_msgs/SetMode.h>
-#include <mavros_msgs/State.h>
-#include <tf/transform_datatypes.h>
-#include <sensor_msgs/Range.h>
-#include <sensor_msgs/JointState.h>
-#include <mavros_msgs/PositionTarget.h>
-#include <nav_msgs/Odometry.h>
-#include <mavros_msgs/State.h>
-#include <sensor_msgs/Imu.h>
-#include <std_msgs/Int32.h>
-#include <geometry_msgs/PoseArray.h>
-#include <px_comm/OpticalFlow.h>
+#include <vin_mission_control.h>
+
+#define PI 3.14159265
 
 using namespace std;
 
 /*flags for detection of msgs and threshold check*/
-int odom_detected_flag = 0, cross_flag = 0, vel_cross_flag = 0, init_imu_flag = 0, object_yaw_flag = 0, tfmini_flag = 0;
-int aruco_detected_flag = 0, landing_flag = 0, update_set_alt_flag = 0,  arucocb_count = 0, flow_flag = 0;
+int odom_detected_flag = 0, cross_flag = 0, vel_cross_flag = 0, init_imu_flag = 0, object_yaw_flag = 0, tfmini_flag = 0, frontiers_size;
+int aruco_detected_flag = 0, landing_flag = 0, update_set_alt_flag = 0, arucocb_count = 0, flow_flag = 0, frontier_count = 0, frontier_flag = 0;
 float x = 0, y = 0, x_des = 0, y_des = 0, err_sum_x = 0.0, err_sum_y = 0.0, yaw_sp = 5.7, err_sum_pos_x = 0, err_sum_pos_y = 0;
 float vel_x = 0, vel_y = 0, vel_thresh = 1.0, vel_sp_x = 0, z_dist, att_sp_thresh = 0.3, traj_sp_threshold = 0.08;
 float vel_sp_y = 0, object_x, object_y, pick_goal_x_cb, pick_goal_y_cb, landing_threshold = 0.1, yaw_init = 5.7;
-int  index_x = 0, index_y = 0,yaw_reset = 0, off_flag =1, grip_status = 0, trajectory_size = 0, take_off_flag = 0, distcb_count = 0;
-double x_dist = 2.0, imu_yaw, yaw_set,yaw_traj, yaw_marker, yaw_sp_temp;
+int index_x = 0, index_y = 0, yaw_reset = 0, off_flag = 1, grip_status = 0, trajectory_size = 0, take_off_flag = 0, distcb_count = 0;
+double x_dist = 2.0, imu_yaw, yaw_set, yaw_traj, yaw_marker, yaw_sp_temp, odom_yaw_init, odom_yaw, yaw_diff_init;
 
 float landing_time = 7;
-float takeoff_time = 6;
+float takeoff_time = 8;
 float landing_time_threshold = 4;
 float yaw_alignment_time = 4;
 float landing_height = 0.3;
@@ -38,8 +24,9 @@ string mode_;
 
 tf::Quaternion q;
 geometry_msgs::PoseStamped mocap, setpoint, vel_sp, pos_sp, goal_sp;
-geometry_msgs::PoseArray traj;
+geometry_msgs::PoseArray traj, frontiers_;
 std_msgs::Int32 gripper_pos, mission_reset_flag;
+nav_msgs::Odometry odom_;
 
 void odomcb(const nav_msgs::Odometry::ConstPtr &msg);
 void distcb(const geometry_msgs::PoseStamped::ConstPtr &msg);
@@ -47,8 +34,11 @@ void statecb(const mavros_msgs::State::ConstPtr &msg);
 void imuCallback(const sensor_msgs::Imu::ConstPtr &msg);
 void traj_cb(const geometry_msgs::PoseArray::ConstPtr &msg);
 void gripper_state_cb(const std_msgs::Int32::ConstPtr &msg);
-void arucocb(const geometry_msgs::PoseStamped::ConstPtr& msg);
-void flowcb(const px_comm::OpticalFlow::ConstPtr& msg);
+void arucocb(const geometry_msgs::PoseStamped::ConstPtr &msg);
+void flowcb(const px_comm::OpticalFlow::ConstPtr &msg);
+void frontiercb(const geometry_msgs::PoseArray::ConstPtr &msg);
+
+double yaw_normalizer(double yaw_);
 
 int main(int argc, char **argv)
 {
@@ -63,6 +53,7 @@ int main(int argc, char **argv)
     ros::Subscriber gripper_sub = nh.subscribe("/gripper/grip_status", 10, gripper_state_cb);
     ros::Subscriber aruco_sub = nh.subscribe("/aruco_single/filtered_pose", 10, arucocb);
     ros::Subscriber flow_sub = nh.subscribe("/px4flow/opt_flow", 10, flowcb);
+    ros::Subscriber frontier_sub = nh.subscribe("/frontier/goal", 10, frontiercb);
 
     ros::Publisher setpoint_pub = nh.advertise<geometry_msgs::PoseStamped>("/mavros/setpoint_position/local", 10);
     ros::Publisher mocap_pub = nh.advertise<geometry_msgs::PoseStamped>("/mavros/mocap/pose", 10);
@@ -71,24 +62,30 @@ int main(int argc, char **argv)
     ros::Publisher gripper_sp_pub = nh.advertise<std_msgs::Int32>("/gripper/position", 10);
     ros::Publisher mission_reset_flag_pub = nh.advertise<std_msgs::Int32>("/mission_reset_flag", 10);
     ros::Publisher goal_pub = nh.advertise<geometry_msgs::PoseStamped>("/costmap_node/goal", 10);
-    
+
     ros::ServiceClient set_mode_client = nh.serviceClient<mavros_msgs::SetMode>("mavros/set_mode");
 
-    mavros_msgs::SetMode  land_set_mode, offb_set_mode;
+    mavros_msgs::SetMode land_set_mode, offb_set_mode;
     offb_set_mode.request.custom_mode = "OFFBOARD";
     land_set_mode.request.custom_mode = "AUTO.LAND";
 
     mission_reset_flag.data = 0;
 
-    double timer_=0, timer_land =0;
+    double timer_ = 0, timer_land = 0;
     float vel_x_prev, vel_y_prev, x_prev, y_prev, set_alt_temp = 0.8;
     int i = 0;
+    float x_temp, y_temp;
+    vector<int> explore_cost;
 
-    ros::Rate loop_rate(30);
+    tf2_ros::Buffer twistBuffer, poseBuffer;
+    tf2_ros::TransformListener tfListener1(twistBuffer);
+    tf2_ros::TransformListener tfListener2(poseBuffer);
+
+    ros::Rate loop_rate(15);
 
     while (ros::ok())
     {
-        float pos_k_p_x, pos_k_p_y, pos_k_d,pos_k_i, vel_x_k_p , vel_x_k_i, vel_x_k_d, vel_y_k_p , vel_y_k_i, vel_y_k_d, set_alt;
+        float pos_k_p_x, pos_k_p_y, pos_k_d, pos_k_i, vel_x_k_p, vel_x_k_i, vel_x_k_d, vel_y_k_p, vel_y_k_i, vel_y_k_d, set_alt;
         nh.getParam("/vin_mission_control/pos_k_p_x", pos_k_p_x);
         nh.getParam("/vin_mission_control/pos_k_p_y", pos_k_p_y);
         nh.getParam("/vin_mission_control/pos_k_d", pos_k_d);
@@ -99,10 +96,16 @@ int main(int argc, char **argv)
         nh.getParam("/vin_mission_control/set_alt", set_alt);
         nh.getParam("/vin_mission_control/yaw_reset", yaw_reset);
 
-        if(update_set_alt_flag==0)
+        if (update_set_alt_flag == 0)
         {
             set_alt_temp = set_alt;
-            update_set_alt_flag=1;
+            update_set_alt_flag = 1;
+        }
+        if (frontier_flag == 0 && frontiers_size == 0)
+        {
+            goal_sp.pose.position.x = .5;
+            goal_sp.pose.position.y = 0;
+            frontier_flag = 1;
         }
 
         mocap.header.stamp = ros::Time::now();
@@ -112,118 +115,190 @@ int main(int argc, char **argv)
         goal_sp.header.stamp = ros::Time::now();
         goal_sp.header.frame_id = "map";
 
-        if( (mission_reset_flag.data ==1) && (mode_=="AUTO.LAND"))   
+        if ((mission_reset_flag.data == 1) && (mode_ == "AUTO.LAND"))
         {
-            
-            if(set_mode_client.call(offb_set_mode) && offb_set_mode.response.mode_sent)
+
+            if (set_mode_client.call(offb_set_mode) && offb_set_mode.response.mode_sent)
             {
-                cout<<"OFFBOARD enabled";
-                off_flag=1;
+                cout << "OFFBOARD enabled";
+                off_flag = 1;
                 index_x = 0;
                 index_y = 0;
                 set_alt_temp = set_alt;
             }
         }
-        if(mode_=="OFFBOARD" && trajectory_size>0)
+
+        geometry_msgs::TransformStamped mav_in_world;
+        try
         {
-            if( off_flag ==1)
+            mav_in_world = poseBuffer.lookupTransform("world", "mav",
+                                                      ros::Time(0));
+        }
+        catch (tf2::TransformException &ex)
+        {
+            ROS_WARN("%s", ex.what());
+            ros::Duration(3.0).sleep();
+            continue;
+        }
+
+        x = mav_in_world.transform.translation.x;
+        y = mav_in_world.transform.translation.y;
+
+        tf::Quaternion q2(
+            mav_in_world.transform.rotation.x,
+            mav_in_world.transform.rotation.y,
+            mav_in_world.transform.rotation.z,
+            mav_in_world.transform.rotation.w);
+
+        tf::Matrix3x3 m2(q2);
+        double r, p;
+        m2.getRPY(r, p, odom_yaw);
+
+        if (i == 0)
+        {
+            x_prev = x;
+            y_prev = y;
+        }
+        else
+        {
+            float vel_x_world = (x - x_prev) * 15;
+            float vel_y_world = (y - y_prev) * 15;
+            vel_x = cos(odom_yaw-odom_yaw_init) * vel_x_world + sin(odom_yaw-odom_yaw_init) * vel_y_world;
+            vel_y = cos(odom_yaw-odom_yaw_init) * vel_y_world - sin(odom_yaw-odom_yaw_init) * vel_x_world;
+        }
+        x_prev = x;
+        y_prev = y;
+
+        if (mode_ == "OFFBOARD" && trajectory_size > 0 && traj.poses[0].position.x != -200)
+        {
+            if (off_flag == 1)
             {
-            timer_ = ros::Time::now().toSec();
-            off_flag =0;
+                timer_ = ros::Time::now().toSec();
+                off_flag = 0;
             }
 
-            if(ros::Time::now().toSec()-timer_ < takeoff_time )
+            if (ros::Time::now().toSec() - timer_ < takeoff_time)
             {
                 x_des = traj.poses[0].position.x;
                 y_des = traj.poses[0].position.y;
-                
-                
-		        setpoint.pose.position.z = set_alt;
 
-                cout<<"Timer ="<<ros::Time::now().toSec()-timer_<<endl;
+                setpoint.pose.position.z = set_alt;
+
+                cout << "Timer =" << ros::Time::now().toSec() - timer_ << endl;
             }
             else
             {
-                for(int ii=0; ii < trajectory_size; ii++)
+                for (int ii = 0; ii < trajectory_size; ii++)
                 {
                     float x_sp = traj.poses[ii].position.x;
                     float y_sp = traj.poses[ii].position.y;
+                    tf::Quaternion q1(
+                        traj.poses[ii].orientation.x,
+                        traj.poses[ii].orientation.y,
+                        traj.poses[ii].orientation.z,
+                        traj.poses[ii].orientation.w);
 
-                    
-    
-                    
-                    if ( (x_sp - traj_sp_threshold) < x && (x_sp + traj_sp_threshold) > x  && (y_sp - traj_sp_threshold) < y && (y_sp + traj_sp_threshold) > y && ii+1<trajectory_size ) 
+                    tf::Matrix3x3 m(q1);
+                    double r, p;
+                    m.getRPY(r, p, yaw_traj);
+
+                    if ((x_sp - traj_sp_threshold) < x && (x_sp + traj_sp_threshold) > x && (y_sp - traj_sp_threshold) < y && (y_sp + traj_sp_threshold) > y && ii + 1 < trajectory_size)
                     {
-                        // index_x = ii;
-                        x_des = traj.poses[ii+1].position.x; 
-                 
-                        // index_y = ii;
-                        y_des = traj.poses[ii+1].position.y;
+                        double yaw_temp_ = yaw_traj;
+                        double yaw_imu_temp_ = imu_yaw-yaw_init;
+                        yaw_imu_temp_ = yaw_normalizer(yaw_imu_temp_);
+                        if (((yaw_imu_temp_ - 0.1) < (yaw_temp_) && (yaw_imu_temp_ + 0.1) > (yaw_temp_)) == 1)
+                        {
+                            x_des = traj.poses[ii + 1].position.x;
 
-                        tf::Quaternion q1(
-                        traj.poses[ii+1].orientation.x,
-                        traj.poses[ii+1].orientation.y,
-                        traj.poses[ii+1].orientation.z,
-                        traj.poses[ii+1].orientation.w);
+                            y_des = traj.poses[ii + 1].position.y;
 
-                        tf::Matrix3x3 m(q1);
+                            tf::Quaternion q1(
+                                traj.poses[ii + 1].orientation.x,
+                                traj.poses[ii + 1].orientation.y,
+                                traj.poses[ii + 1].orientation.z,
+                                traj.poses[ii + 1].orientation.w);
 
-                        double r, p;
-                        m.getRPY(r, p, yaw_traj);
-                        yaw_traj = 0;
-                        yaw_sp = (yaw_init+yaw_traj);
+                            tf::Matrix3x3 m(q1);
+                            double r, p;
+                            m.getRPY(r, p, yaw_traj);
+                            yaw_sp = yaw_init + yaw_traj;
+                            yaw_sp = yaw_normalizer(yaw_sp);
+                        }
+                        else
+                        {
+                            double yaw_temp_ = yaw_init + yaw_traj;
+                            yaw_temp_= yaw_normalizer(yaw_temp_);
+                            double yaw_diff  = yaw_sp - imu_yaw;
+                            yaw_diff = yaw_normalizer(yaw_diff);
+                            if (((yaw_diff) < (0.04) && (yaw_diff) > -(0.04)) == 1)
+                            {
+                                yaw_sp = imu_yaw + ((yaw_traj - imu_yaw + yaw_init-odom_yaw_init) / fabs((yaw_traj - imu_yaw + yaw_init-odom_yaw_init))) * 0.07;
+                                yaw_sp = yaw_normalizer(yaw_sp);
+                            }
+                            if (((yaw_sp - .06) < (yaw_temp_) && (yaw_sp + .06) > (yaw_temp_)) == 1)
+                            {
+                                yaw_sp = yaw_normalizer(yaw_sp);
+                                tf::Quaternion q1(
+                                    traj.poses[ii + 1].orientation.x,
+                                    traj.poses[ii + 1].orientation.y,
+                                    traj.poses[ii + 1].orientation.z,
+                                    traj.poses[ii + 1].orientation.w);
 
-                        cout<<"imu_yaw"<<imu_yaw<<endl<<"yaw_init="<<yaw_init<<endl<<"yaw_traj"<<yaw_traj<<endl<<endl;
+                                tf::Matrix3x3 m(q1);
+                                double r, p;
+                                m.getRPY(r, p, yaw_traj);
+                            }
+                        }
+                        yaw_sp = yaw_normalizer(yaw_sp);
                     }
                 }
 
-                float pick_goal_x = traj.poses[trajectory_size-1].position.x;
-                float pick_goal_y = traj.poses[trajectory_size-1].position.y;
+                float pick_goal_x = traj.poses[trajectory_size - 1].position.x;
+                float pick_goal_y = traj.poses[trajectory_size - 1].position.y;
 
-                if(aruco_detected_flag == 1 &&  mission_reset_flag.data == 0)
+                if (aruco_detected_flag == 1 && mission_reset_flag.data == 0)
                 {
-                    pick_goal_x = pick_goal_x_cb; 
-                    pick_goal_y = pick_goal_y_cb; 
+                    pick_goal_x = pick_goal_x_cb;
+                    pick_goal_y = pick_goal_y_cb;
 
                     x_des = pick_goal_x;
                     y_des = pick_goal_y;
-
                 }
 
-                if ((pick_goal_x - landing_threshold) < x && (pick_goal_x + landing_threshold) > x && (pick_goal_y - landing_threshold) < y && (pick_goal_y + landing_threshold) > y )
-                {    
-                    cout<<"Stabilizing over object"<<endl;
+                if ((pick_goal_x - landing_threshold) < x && (pick_goal_x + landing_threshold) > x && (pick_goal_y - landing_threshold) < y && (pick_goal_y + landing_threshold) > y)
+                {
+                    cout << "Stabilizing over object" << endl;
                     arucocb_count = arucocb_count + 1;
 
-                    if((ros::Time::now().toSec() - timer_land) >= yaw_alignment_time)
+                    if ((ros::Time::now().toSec() - timer_land) >= yaw_alignment_time)
                     {
-                        if(object_yaw_flag == 0 )
+                        if (object_yaw_flag == 0)
                         {
-                            yaw_sp_temp = imu_yaw-yaw_marker;
+                            yaw_sp_temp = imu_yaw - yaw_marker;
                             object_yaw_flag = 1;
                         }
-                        if(mission_reset_flag.data == 0)
+                        if (mission_reset_flag.data == 0)
                             yaw_sp = yaw_sp_temp;
-                        cout<<"Aligning yaw over object"<<endl;
-                        
-                        if((ros::Time::now().toSec() - timer_land) >= (landing_time_threshold+yaw_alignment_time))
+                        cout << "Aligning yaw over object" << endl;
+
+                        if ((ros::Time::now().toSec() - timer_land) >= (landing_time_threshold + yaw_alignment_time))
                         {
                             landing_flag = 1;
-                            setpoint.pose.position.z = set_alt_temp-(ros::Time::now().toSec()-timer_land-landing_time_threshold-yaw_alignment_time)*((set_alt_temp-landing_height)/landing_time);
-                            
-                            cout<<"Landing"<<endl;
+                            setpoint.pose.position.z = set_alt_temp - (ros::Time::now().toSec() - timer_land - landing_time_threshold - yaw_alignment_time) * ((set_alt_temp - landing_height) / landing_time);
 
-                            if( (ros::Time::now().toSec()-timer_land) >(landing_time+landing_time_threshold+yaw_alignment_time) )
+                            cout << "Landing" << endl;
+
+                            if ((ros::Time::now().toSec() - timer_land) > (landing_time + landing_time_threshold + yaw_alignment_time))
                             {
-                                if( set_mode_client.call(land_set_mode) && land_set_mode.response.mode_sent )
+                                if (set_mode_client.call(land_set_mode) && land_set_mode.response.mode_sent)
                                 {
                                     ROS_INFO("land enabled");
                                     ros::Duration(land_mode_sleep_time).sleep();
-                                    if(grip_status == 0)
+                                    if (grip_status == 0)
                                     {
                                         gripper_pos.data = 1;
-                                        cout<<"gripped"<<endl;
-                                        
+                                        cout << "gripped" << endl;
                                     }
                                     else if (grip_status == 1)
                                     {
@@ -231,43 +306,69 @@ int main(int argc, char **argv)
                                     }
 
                                     //CHANGED HERE
-                                    cout<<"Previus mision reset "<<mission_reset_flag.data<<endl;
-                                    if(mission_reset_flag.data == 0)
+                                    cout << "Previus mision reset " << mission_reset_flag.data << endl;
+                                    if (mission_reset_flag.data == 0)
                                     {
                                         mission_reset_flag.data = 1;
-                                        cout<<"reseting mission"<<endl;
+                                        cout << "reseting mission" << endl;
                                     }
                                     else
                                     {
                                         mission_reset_flag.data = 2;
-                                        cout<<"DONE!"<<endl;
+                                        cout << "DONE!" << endl;
                                         ros::Duration(10).sleep();
                                     }
 
                                     mission_reset_flag_pub.publish(mission_reset_flag);
                                     gripper_sp_pub.publish(gripper_pos);
                                     ros::Duration(gripping_sleep_time).sleep();
-
                                 }
                             }
-                        }   
-                    }    
+                        }
+                    }
                 }
                 else
                 {
                     timer_land = ros::Time::now().toSec();
                     set_alt_temp = setpoint.pose.position.z;
                 }
-            } 
+            }
         }
 
-        cout<<"traj"<<x_des<<","<<x<<","<<y_des<<","<<y<<endl<<endl;
-        
         pos_sp.pose.position.x = x_des;
         pos_sp.pose.position.y = y_des;
 
-        goal_sp.pose.position.x = 4;
-        goal_sp.pose.position.y = 0;
+        if (frontiers_size > 0)
+        {
+            for (int jj = 0; jj < frontiers_size; jj++)
+            {
+                float y_diff = (frontiers_.poses[jj].position.y - y);
+                float x_diff = (frontiers_.poses[jj].position.x - x);
+                float yaw_frontier = atan2(y_diff, x_diff);
+
+                explore_cost.push_back(sqrt(pow(frontiers_.poses[jj].position.x - x, 2) +
+                                            pow(frontiers_.poses[jj].position.y - y, 2))*0 +
+                                       4 * fabs(yaw_frontier - imu_yaw + yaw_init) * 180 / PI);
+            }
+            if ((goal_sp.pose.position.x - 0.1) < x && (goal_sp.pose.position.x + 0.1) > x && (goal_sp.pose.position.y - 0.1) < y && (goal_sp.pose.position.y + 0.1) > y)
+            {
+                goal_sp.pose.position.x = frontiers_.poses[distance(explore_cost.begin(), min_element(explore_cost.begin(), explore_cost.end()))].position.x;
+                goal_sp.pose.position.y = frontiers_.poses[distance(explore_cost.begin(), min_element(explore_cost.begin(), explore_cost.end()))].position.y;
+            }
+            if (traj.poses[0].position.x == -200 && frontiers_size > 0)
+            {
+                goal_sp.pose.position.x = frontiers_.poses[distance(explore_cost.begin(), min_element(explore_cost.begin(), explore_cost.end()))].position.x;
+                goal_sp.pose.position.y = frontiers_.poses[distance(explore_cost.begin(), min_element(explore_cost.begin(), explore_cost.end()))].position.y;
+            }
+            explore_cost.clear();
+        }
+        cout << "yaw_sp" << yaw_sp << endl
+             << "imu_yaw=" << imu_yaw << endl
+             << "odom_yaw" << odom_yaw << endl
+             << "odom_yaw_initz" << odom_yaw_init << endl
+             << endl;
+        cout << "traj" << x_des << "," << x << "," << y_des << "," << y << endl
+             << endl;
 
         if (odom_detected_flag == 1 && tfmini_flag == 1)
         {
@@ -275,8 +376,6 @@ int main(int argc, char **argv)
             {
                 vel_x_prev = vel_x;
                 vel_y_prev = vel_y;
-                x_prev = x;
-                y_prev = y;
             }
             else
             {
@@ -294,20 +393,15 @@ int main(int argc, char **argv)
                     err_sum_pos_x = 0;
                 }
 
-                //cout << "Error sum pos = " << err_sum_pos_x * 0.03 * pos_k_i << " , " << err_sum_pos_y * 0.03 * pos_k_i << endl;
+                float vel_sp_x_world = (x_des - x) * pos_k_p_x + (err_sum_pos_x)*0.015 * pos_k_i;
+                float vel_sp_y_world = (y_des - y) * pos_k_p_y + (err_sum_pos_y)*0.015 * pos_k_i;
+                vel_sp_x = cos(odom_yaw-odom_yaw_init) * vel_sp_x_world + sin(odom_yaw-odom_yaw_init) * vel_sp_y_world;
+                vel_sp_y = cos(odom_yaw-odom_yaw_init) * vel_sp_y_world - sin(odom_yaw-odom_yaw_init) * vel_sp_x_world;
 
-
-                float vel_sp_x_world = (x_des - x)*pos_k_p_x + (err_sum_pos_x)*0.03*pos_k_i;
-                float vel_sp_y_world = (y_des - y)*pos_k_p_y + (err_sum_pos_y)*0.03*pos_k_i;
-                vel_sp_x = cos(yaw_traj)*vel_sp_x_world + sin(yaw_traj)* vel_sp_y_world;
-                vel_sp_y = cos(yaw_traj)*vel_sp_y_world - sin(yaw_traj)* vel_sp_x_world;
-
-                
-		        //cout<<"pos_d = "<<(y - y_prev)*30*pos_k_d<<endl;
                 err_sum_x = err_sum_x + (vel_x - vel_sp_x);
                 err_sum_y = err_sum_y + (vel_y - vel_sp_y);
 
-                if(mode_=="OFFBOARD")
+                if (mode_ == "OFFBOARD")
                 {
                     nh.getParam("/vin_mission_control/vel_x_k_i", vel_x_k_i);
                     nh.getParam("/vin_mission_control/vel_y_k_i", vel_y_k_i);
@@ -320,7 +414,7 @@ int main(int argc, char **argv)
                     err_sum_x = 0;
                 }
 
-                // vel_sp_y = -0.0f;    
+                // vel_sp_y = -0.0f;
                 // vel_sp_x = 0.0f;
 
                 if (vel_sp_x < -vel_thresh || vel_sp_x > vel_thresh || vel_sp_y < -vel_thresh || vel_sp_y > vel_thresh)
@@ -339,8 +433,8 @@ int main(int argc, char **argv)
                 if (vel_cross_flag == 1)
                     cout << "vel Threshold reached" << endl;
 
-                mocap.pose.position.y = ((vel_y - vel_sp_y)*vel_y_k_p + (err_sum_y)*0.03*vel_y_k_i + (vel_y - vel_y_prev)*30*vel_y_k_d);//roll
-                mocap.pose.position.x = ((vel_x - vel_sp_x)*vel_x_k_p + (err_sum_x)*0.03*vel_x_k_i + (vel_x - vel_x_prev)*30*vel_x_k_d);//pitch
+                mocap.pose.position.y = ((vel_y - vel_sp_y) * vel_y_k_p + (err_sum_y)*0.015 * vel_y_k_i + (vel_y - vel_y_prev) * 15 * vel_y_k_d); //roll
+                mocap.pose.position.x = ((vel_x - vel_sp_x) * vel_x_k_p + (err_sum_x)*0.015 * vel_x_k_i + (vel_x - vel_x_prev) * 15 * vel_x_k_d); //pitch
 
                 vel_sp.pose.position.x = vel_sp_x;
                 vel_sp.pose.position.y = -vel_sp_y;
@@ -348,15 +442,14 @@ int main(int argc, char **argv)
 
             vel_x_prev = vel_x;
             vel_y_prev = vel_y;
-            x_prev = x;
-            y_prev = y;
 
             i = i + 1;
 
-            if(yaw_reset == 1)
+            if (yaw_reset == 1)
             {
-                
-                yaw_init = imu_yaw;
+                odom_yaw_init = odom_yaw;
+                yaw_init = imu_yaw - odom_yaw;
+                yaw_init = yaw_normalizer(yaw_init);
                 yaw_sp = imu_yaw;
                 nh.setParam("/vin_mission_control/yaw_reset", 0);
             }
@@ -381,15 +474,13 @@ int main(int argc, char **argv)
             if (cross_flag == 1)
                 cout << "Attitude Threshold reached" << endl;
 
-
             /*check for obstacles in front  */
-            if(x_dist < 0.7 && flow_flag ==1 && x_dist >0.02 )
-                mocap.pose.position.x = 0.1 * ( 0.7 - x_dist  );     
+            if (x_dist < 0.7 && flow_flag == 1 && x_dist > 0.02)
+                mocap.pose.position.x = 0.1 * (0.7 - x_dist);
 
-            // cout << "pitch = " << mocap.pose.position.x << std::endl
-            //      << "roll = " << mocap.pose.position.y << endl;
             setpoint_pub.publish(setpoint);
-             tfmini_flag = 0;
+            tfmini_flag = 0;
+            odom_detected_flag = 0;
         }
 
         mocap.pose.position.z = z_dist;
@@ -406,24 +497,22 @@ int main(int argc, char **argv)
 
 void odomcb(const nav_msgs::Odometry::ConstPtr &msg)
 {
-    x = (msg->pose.pose.position.x);
-    y = (msg->pose.pose.position.y);
-    vel_x = (msg->twist.twist.linear.x);
-    vel_y = -(msg->twist.twist.linear.y);
+
+    odom_ = *msg;
 
     double vel_with_cov[36], pos_with_cov[36];
 
-    for(int iii = 0; iii<36; iii++)
+    for (int iii = 0; iii < 36; iii++)
     {
         vel_with_cov[iii] = fabs(msg->twist.covariance[iii]);
         pos_with_cov[iii] = fabs(msg->pose.covariance[iii]);
     }
-    sort(vel_with_cov,vel_with_cov+36);
-    sort(pos_with_cov,pos_with_cov+36);
-    if( vel_with_cov[35]<5.0 && pos_with_cov[35]<5.0)
-            odom_detected_flag = 1;
-        else
-            odom_detected_flag = 0;
+    sort(vel_with_cov, vel_with_cov + 36);
+    sort(pos_with_cov, pos_with_cov + 36);
+    if (vel_with_cov[35] < 5.0 && pos_with_cov[35] < 5.0)
+        odom_detected_flag = 1;
+    else
+        odom_detected_flag = 0;
 }
 
 void distcb(const geometry_msgs::PoseStamped::ConstPtr &msg)
@@ -431,7 +520,7 @@ void distcb(const geometry_msgs::PoseStamped::ConstPtr &msg)
     z_dist = msg->pose.position.z;
     distcb_count = distcb_count + 1;
 
-    if(distcb_count > 10)
+    if (distcb_count > 10)
         tfmini_flag = 1;
 }
 
@@ -442,10 +531,10 @@ void statecb(const mavros_msgs::State::ConstPtr &msg)
 
 void imuCallback(const sensor_msgs::Imu::ConstPtr &msg)
 {
-        tf::Quaternion q1(msg->orientation.x, msg->orientation.y, msg->orientation.z, msg->orientation.w);
-        tf::Matrix3x3 m(q1);
-        double r, p;
-        m.getRPY(r, p, imu_yaw);
+    tf::Quaternion q1(msg->orientation.x, msg->orientation.y, msg->orientation.z, msg->orientation.w);
+    tf::Matrix3x3 m(q1);
+    double r, p;
+    m.getRPY(r, p, imu_yaw);
 }
 
 void traj_cb(const geometry_msgs::PoseArray::ConstPtr &msg)
@@ -459,51 +548,67 @@ void gripper_state_cb(const std_msgs::Int32::ConstPtr &msg)
     grip_status = msg->data;
 }
 
-void arucocb(const geometry_msgs::PoseStamped::ConstPtr& msg)
+void arucocb(const geometry_msgs::PoseStamped::ConstPtr &msg)
 {
-    double current_heading = yaw_init-imu_yaw;
-    if(landing_flag==0 )
+    double current_heading = yaw_init - imu_yaw;
+    if (landing_flag == 0)
     {
-        object_x = -(cos(current_heading)*(msg->pose.position.y)+sin(current_heading)*(msg->pose.position.x)); 
-    	object_y = -(cos(current_heading)*(msg->pose.position.x)-sin(current_heading)*(msg->pose.position.y));
-	    if(object_x>-0.2 && object_x < 0.2 && object_y <0.2 && object_y >-0.2 && arucocb_count <100)
-    	{
-	        pick_goal_x_cb = x + object_x;
-    	    pick_goal_y_cb = y + object_y;
+        object_x = -(cos(current_heading) * (msg->pose.position.y) + sin(current_heading) * (msg->pose.position.x));
+        object_y = -(cos(current_heading) * (msg->pose.position.x) - sin(current_heading) * (msg->pose.position.y));
+        if (object_x > -0.2 && object_x < 0.2 && object_y < 0.2 && object_y > -0.2 && arucocb_count < 100)
+        {
+            pick_goal_x_cb = x + object_x;
+            pick_goal_y_cb = y + object_y;
             aruco_detected_flag = 1;
             // cout<<"x = "<<object_x<<"y = "<<object_y<<"arucocb_count = "<<arucocb_count<<endl;
 
-             tf::Quaternion q2(
+            tf::Quaternion q2(
                 msg->pose.orientation.x,
                 msg->pose.orientation.y,
                 msg->pose.orientation.z,
                 msg->pose.orientation.w);
-        
-                tf::Matrix3x3 m1(q2);
-    
-                double r, p;
-                m1.getRPY(r, p, yaw_marker);
+
+            tf::Matrix3x3 m1(q2);
+
+            double r, p;
+            m1.getRPY(r, p, yaw_marker);
         }
-        
     }
 }
 
-void flowcb(const px_comm::OpticalFlow::ConstPtr& msg)
+void flowcb(const px_comm::OpticalFlow::ConstPtr &msg)
 {
     double x_dist_temp = msg->ground_distance;
-    double x_dist_median [16];
-    
-    for( int i =0; i<16; i++)
+    double x_dist_median[16];
+
+    for (int i = 0; i < 16; i++)
         x_dist_median[i] = x_dist_temp;
 
-    sort(x_dist_median,x_dist_median+10);
+    sort(x_dist_median, x_dist_median + 10);
 
     if ((x_dist_temp > (x_dist_median[8] - 0.3)) && (x_dist_temp < (x_dist_median[8] + 0.3)))
         x_dist = x_dist_temp;
-    
-    if(x_dist < 0.1)
+
+    if (x_dist < 0.1)
         x_dist = 2.0;
     flow_flag = 1;
-    // cout<<"x_dist = "<<x_dist<<endl;
+}
 
+void frontiercb(const geometry_msgs::PoseArray::ConstPtr &msg)
+{
+    frontiers_ = *msg;
+    frontiers_size = frontiers_.poses.size();
+}
+
+double yaw_normalizer(double yaw_)
+{
+    if (yaw_ > PI)
+    {
+        yaw_ = yaw_ - (PI * 2);
+    }
+    else if (yaw_ < -PI)
+    {
+        yaw_ = yaw_ + (PI * 2);
+    }
+return yaw_;
 }

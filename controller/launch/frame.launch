@@ -1,0 +1,10 @@
+<launch>
+  <arg name="imu_frame_id" default="imu" />
+  <arg name="mav_frame_id" default="mav" />
+
+  <node pkg="tf" type="static_transform_publisher" name="imu_to_mav"
+        args="-0.14 0.05 -0.14 0.0 0.0 0.0 1.0 $(arg imu_frame_id) $(arg mav_frame_id) 10" >
+  </node>
+
+
+</launch>

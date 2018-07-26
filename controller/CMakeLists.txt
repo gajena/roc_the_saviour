@@ -20,8 +20,8 @@ find_package(catkin REQUIRED COMPONENTS
   px_comm
   )
 
-catkin_package()
-include_directories(${catkin_INCLUDE_DIRS})
+catkin_package( INCLUDE_DIRS include)
+include_directories(include ${catkin_INCLUDE_DIRS})
 
 add_executable(vin_mission_control src/vin_mission_control.cpp )
 target_link_libraries(vin_mission_control
