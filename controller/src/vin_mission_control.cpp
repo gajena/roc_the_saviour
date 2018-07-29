@@ -23,7 +23,7 @@ float land_mode_sleep_time = 3;
 string mode_;
 
 tf::Quaternion q;
-geometry_msgs::PoseStamped mocap, setpoint, vel_sp, pos_sp, goal_sp;
+geometry_msgs::PoseStamped mocap, setpoint, vel_sp, pos_sp, goal_sp,vel_;
 geometry_msgs::PoseArray traj, frontiers_;
 std_msgs::Int32 gripper_pos, mission_reset_flag;
 nav_msgs::Odometry odom_;
@@ -59,6 +59,7 @@ int main(int argc, char **argv)
     ros::Publisher setpoint_pub = nh.advertise<geometry_msgs::PoseStamped>("/mavros/setpoint_position/local", 10);
     ros::Publisher mocap_pub = nh.advertise<geometry_msgs::PoseStamped>("/mavros/mocap/pose", 10);
     ros::Publisher vel_sp_pub = nh.advertise<geometry_msgs::PoseStamped>("/velocity_sp", 10);
+    ros::Publisher vel_pub = nh.advertise<geometry_msgs::PoseStamped>("/velocity", 10);
     ros::Publisher pos_sp_pub = nh.advertise<geometry_msgs::PoseStamped>("/position_sp", 10);
     ros::Publisher gripper_sp_pub = nh.advertise<std_msgs::Int32>("/gripper/position", 10);
     ros::Publisher mission_reset_flag_pub = nh.advertise<std_msgs::Int32>("/mission_reset_flag", 10);
@@ -113,6 +114,7 @@ int main(int argc, char **argv)
         mocap.header.stamp = ros::Time::now();
         setpoint.header.stamp = ros::Time::now();
         vel_sp.header.stamp = ros::Time::now();
+        vel_.header.stamp = ros::Time::now();
         pos_sp.header.stamp = ros::Time::now();
         goal_sp.header.stamp = ros::Time::now();
         goal_sp.header.frame_id = "map";
@@ -235,7 +237,7 @@ int main(int argc, char **argv)
                             yaw_diff = yaw_normalizer(yaw_diff);
                             if (((yaw_diff) < (0.04) && (yaw_diff) > -(0.04)) == 1)
                             {
-                                yaw_sp = imu_yaw + ((yaw_traj - imu_yaw + yaw_init - odom_yaw_init) / fabs((yaw_traj - imu_yaw + yaw_init - odom_yaw_init))) * 0.07;
+                                yaw_sp = imu_yaw + ((yaw_normalizer(yaw_traj - imu_yaw + yaw_init )) / fabs(yaw_normalizer(yaw_traj - imu_yaw + yaw_init))) * 0.07;
                                 yaw_sp = yaw_normalizer(yaw_sp);
                             }
                             if (((yaw_sp - .06) < (yaw_temp_) && (yaw_sp + .06) > (yaw_temp_)) == 1)
@@ -350,8 +352,8 @@ int main(int argc, char **argv)
 
                 explore_cost.push_back(sqrt(pow(frontiers_.poses[jj].position.x - x, 2) +
                                             pow(frontiers_.poses[jj].position.y - y, 2)) *
-                                           100 +
-                                       4 * fabs(yaw_frontier - imu_yaw + yaw_init) * 180 / PI);
+                                           50 +
+                                       4 * fabs(yaw_normalizer(yaw_frontier - imu_yaw + yaw_init)) * 180 / PI);
             }
             if ((goal_sp.pose.position.x - 0.1) < x && (goal_sp.pose.position.x + 0.1) > x && (goal_sp.pose.position.y - 0.1) < y && (goal_sp.pose.position.y + 0.1) > y)
             {
@@ -458,6 +460,8 @@ int main(int argc, char **argv)
 
                 vel_sp.pose.position.x = vel_sp_x;
                 vel_sp.pose.position.y = -vel_sp_y;
+                vel_.pose.position.x = vel_x;
+                vel_.pose.position.y = vel_y;
             }
 
             vel_x_prev = vel_x;
@@ -495,8 +499,8 @@ int main(int argc, char **argv)
                 cout << "Attitude Threshold reached" << endl;
 
             /*check for obstacles in front  */
-            if (x_dist < 1.0 && flow_flag == 1 && x_dist > 0.02)
-                mocap.pose.position.x = 0.1 * (1.0 - x_dist);
+            if (x_dist < 0.7 && flow_flag == 1 && x_dist > 0.02)
+                mocap.pose.position.x = 0.1 * (0.7 - x_dist);
 
             setpoint_pub.publish(setpoint);
             tfmini_flag = 0;
@@ -506,6 +510,7 @@ int main(int argc, char **argv)
         mocap.pose.position.z = z_dist;
         mocap_pub.publish(mocap);
         vel_sp_pub.publish(vel_sp);
+        vel_pub.publish(vel_);
         pos_sp_pub.publish(pos_sp);
         goal_pub.publish(goal_sp);
         ros::spinOnce();
