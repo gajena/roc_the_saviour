@@ -5,7 +5,7 @@
 using namespace std;
 
 /*flags for detection of msgs and threshold check*/
-int odom_detected_flag = 0, cross_flag = 0, vel_cross_flag = 0, init_imu_flag = 0, object_yaw_flag = 0, tfmini_flag = 0, frontiers_size;
+int odom_detected_flag = 0, cross_flag = 0, vel_cross_flag = 0, init_imu_flag = 0, object_yaw_flag = 0, tfmini_flag = 0, frontiers_size, goal_flag = 0;
 int aruco_detected_flag = 0, landing_flag = 0, update_set_alt_flag = 0, arucocb_count = 0, flow_flag = 0, frontier_count = 0, frontier_flag = 0;
 float x = 0, y = 0, x_des = 0, y_des = 0, err_sum_x = 0.0, err_sum_y = 0.0, yaw_sp = 5.7, err_sum_pos_x = 0, err_sum_pos_y = 0;
 float vel_x = 0, vel_y = 0, vel_thresh = 1.0, vel_sp_x = 0, z_dist, att_sp_thresh = 0.3, traj_sp_threshold = 0.08;
@@ -27,6 +27,7 @@ geometry_msgs::PoseStamped mocap, setpoint, vel_sp, pos_sp, goal_sp;
 geometry_msgs::PoseArray traj, frontiers_;
 std_msgs::Int32 gripper_pos, mission_reset_flag;
 nav_msgs::Odometry odom_;
+geometry_msgs::Point32 goal_;
 
 void odomcb(const nav_msgs::Odometry::ConstPtr &msg);
 void distcb(const geometry_msgs::PoseStamped::ConstPtr &msg);
@@ -103,9 +104,10 @@ int main(int argc, char **argv)
         }
         if (frontier_flag == 0 && frontiers_size == 0)
         {
-            goal_sp.pose.position.x = .5;
+            goal_sp.pose.position.x = 0.5;
             goal_sp.pose.position.y = 0;
-            frontier_flag = 1;
+            goal_.x = 0.0;
+            goal_.y = 0.0;
         }
 
         mocap.header.stamp = ros::Time::now();
@@ -163,8 +165,8 @@ int main(int argc, char **argv)
         {
             float vel_x_world = (x - x_prev) * 15;
             float vel_y_world = (y - y_prev) * 15;
-            vel_x = cos(odom_yaw-odom_yaw_init) * vel_x_world + sin(odom_yaw-odom_yaw_init) * vel_y_world;
-            vel_y = cos(odom_yaw-odom_yaw_init) * vel_y_world - sin(odom_yaw-odom_yaw_init) * vel_x_world;
+            vel_x = cos(odom_yaw - odom_yaw_init) * vel_x_world + sin(odom_yaw - odom_yaw_init) * vel_y_world;
+            vel_y = cos(odom_yaw - odom_yaw_init) * vel_y_world - sin(odom_yaw - odom_yaw_init) * vel_x_world;
         }
         x_prev = x;
         y_prev = y;
@@ -205,7 +207,7 @@ int main(int argc, char **argv)
                     if ((x_sp - traj_sp_threshold) < x && (x_sp + traj_sp_threshold) > x && (y_sp - traj_sp_threshold) < y && (y_sp + traj_sp_threshold) > y && ii + 1 < trajectory_size)
                     {
                         double yaw_temp_ = yaw_traj;
-                        double yaw_imu_temp_ = imu_yaw-yaw_init;
+                        double yaw_imu_temp_ = imu_yaw - yaw_init;
                         yaw_imu_temp_ = yaw_normalizer(yaw_imu_temp_);
                         if (((yaw_imu_temp_ - 0.1) < (yaw_temp_) && (yaw_imu_temp_ + 0.1) > (yaw_temp_)) == 1)
                         {
@@ -228,12 +230,12 @@ int main(int argc, char **argv)
                         else
                         {
                             double yaw_temp_ = yaw_init + yaw_traj;
-                            yaw_temp_= yaw_normalizer(yaw_temp_);
-                            double yaw_diff  = yaw_sp - imu_yaw;
+                            yaw_temp_ = yaw_normalizer(yaw_temp_);
+                            double yaw_diff = yaw_sp - imu_yaw;
                             yaw_diff = yaw_normalizer(yaw_diff);
                             if (((yaw_diff) < (0.04) && (yaw_diff) > -(0.04)) == 1)
                             {
-                                yaw_sp = imu_yaw + ((yaw_traj - imu_yaw + yaw_init-odom_yaw_init) / fabs((yaw_traj - imu_yaw + yaw_init-odom_yaw_init))) * 0.07;
+                                yaw_sp = imu_yaw + ((yaw_traj - imu_yaw + yaw_init - odom_yaw_init) / fabs((yaw_traj - imu_yaw + yaw_init - odom_yaw_init))) * 0.07;
                                 yaw_sp = yaw_normalizer(yaw_sp);
                             }
                             if (((yaw_sp - .06) < (yaw_temp_) && (yaw_sp + .06) > (yaw_temp_)) == 1)
@@ -347,21 +349,39 @@ int main(int argc, char **argv)
                 float yaw_frontier = atan2(y_diff, x_diff);
 
                 explore_cost.push_back(sqrt(pow(frontiers_.poses[jj].position.x - x, 2) +
-                                            pow(frontiers_.poses[jj].position.y - y, 2))*0 +
+                                            pow(frontiers_.poses[jj].position.y - y, 2)) *
+                                           100 +
                                        4 * fabs(yaw_frontier - imu_yaw + yaw_init) * 180 / PI);
             }
             if ((goal_sp.pose.position.x - 0.1) < x && (goal_sp.pose.position.x + 0.1) > x && (goal_sp.pose.position.y - 0.1) < y && (goal_sp.pose.position.y + 0.1) > y)
             {
+                goal_.x = x_des;
+                goal_.y = y_des;
+
                 goal_sp.pose.position.x = frontiers_.poses[distance(explore_cost.begin(), min_element(explore_cost.begin(), explore_cost.end()))].position.x;
                 goal_sp.pose.position.y = frontiers_.poses[distance(explore_cost.begin(), min_element(explore_cost.begin(), explore_cost.end()))].position.y;
+                frontier_flag = 1;
+                goal_flag = 0;
             }
-            if (traj.poses[0].position.x == -200 && frontiers_size > 0)
+            if (traj.poses[0].position.x == -200 && frontiers_size > 0 && frontier_flag == 1)
             {
+                //if(goal_flag == 0 )
+                {
+                    goal_.x = x_des;
+                    goal_.y = y_des;
+                    goal_flag = 1;
+                }
                 goal_sp.pose.position.x = frontiers_.poses[distance(explore_cost.begin(), min_element(explore_cost.begin(), explore_cost.end()))].position.x;
                 goal_sp.pose.position.y = frontiers_.poses[distance(explore_cost.begin(), min_element(explore_cost.begin(), explore_cost.end()))].position.y;
             }
             explore_cost.clear();
         }
+
+        static tf::TransformBroadcaster br;
+        tf::Transform transform;
+        transform.setOrigin(tf::Vector3(goal_.x, goal_.y, 0.0));
+        br.sendTransform(tf::StampedTransform(transform, ros::Time::now(), "world", "last_goal"));
+
         cout << "yaw_sp" << yaw_sp << endl
              << "imu_yaw=" << imu_yaw << endl
              << "odom_yaw" << odom_yaw << endl
@@ -395,8 +415,8 @@ int main(int argc, char **argv)
 
                 float vel_sp_x_world = (x_des - x) * pos_k_p_x + (err_sum_pos_x)*0.015 * pos_k_i;
                 float vel_sp_y_world = (y_des - y) * pos_k_p_y + (err_sum_pos_y)*0.015 * pos_k_i;
-                vel_sp_x = cos(odom_yaw-odom_yaw_init) * vel_sp_x_world + sin(odom_yaw-odom_yaw_init) * vel_sp_y_world;
-                vel_sp_y = cos(odom_yaw-odom_yaw_init) * vel_sp_y_world - sin(odom_yaw-odom_yaw_init) * vel_sp_x_world;
+                vel_sp_x = cos(odom_yaw - odom_yaw_init) * vel_sp_x_world + sin(odom_yaw - odom_yaw_init) * vel_sp_y_world;
+                vel_sp_y = cos(odom_yaw - odom_yaw_init) * vel_sp_y_world - sin(odom_yaw - odom_yaw_init) * vel_sp_x_world;
 
                 err_sum_x = err_sum_x + (vel_x - vel_sp_x);
                 err_sum_y = err_sum_y + (vel_y - vel_sp_y);
@@ -475,8 +495,8 @@ int main(int argc, char **argv)
                 cout << "Attitude Threshold reached" << endl;
 
             /*check for obstacles in front  */
-            if (x_dist < 0.7 && flow_flag == 1 && x_dist > 0.02)
-                mocap.pose.position.x = 0.1 * (0.7 - x_dist);
+            if (x_dist < 1.0 && flow_flag == 1 && x_dist > 0.02)
+                mocap.pose.position.x = 0.1 * (1.0 - x_dist);
 
             setpoint_pub.publish(setpoint);
             tfmini_flag = 0;
@@ -519,9 +539,10 @@ void distcb(const geometry_msgs::PoseStamped::ConstPtr &msg)
 {
     z_dist = msg->pose.position.z;
     distcb_count = distcb_count + 1;
-
     if (distcb_count > 10)
         tfmini_flag = 1;
+    if( odom_.pose.pose.position.z > 2.0)
+	tfmini_flag = 0;
 }
 
 void statecb(const mavros_msgs::State::ConstPtr &msg)
@@ -610,5 +631,5 @@ double yaw_normalizer(double yaw_)
     {
         yaw_ = yaw_ + (PI * 2);
     }
-return yaw_;
+    return yaw_;
 }

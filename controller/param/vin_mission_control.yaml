@@ -3,10 +3,10 @@ pos_k_p_y: 1.3
 pos_k_d: 0.0
 pos_k_i: 0.0
 vel_x_k_p: 0.23
-vel_x_k_d: 0.012
+vel_x_k_d: 0.010
 vel_x_k_i: 0.03
 vel_y_k_p: 0.33
-vel_y_k_d: 0.014
+vel_y_k_d: 0.012
 vel_y_k_i: 0.03
 set_alt: 0.8
 yaw_reset: 1
