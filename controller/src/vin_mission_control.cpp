@@ -352,7 +352,7 @@ int main(int argc, char **argv)
 
                 explore_cost.push_back(sqrt(pow(frontiers_.poses[jj].position.x - x, 2) +
                                             pow(frontiers_.poses[jj].position.y - y, 2)) *
-                                           50 +
+                                           150 +
                                        4 * fabs(yaw_normalizer(yaw_frontier - imu_yaw + yaw_init)) * 180 / PI);
             }
             if ((goal_sp.pose.position.x - 0.1) < x && (goal_sp.pose.position.x + 0.1) > x && (goal_sp.pose.position.y - 0.1) < y && (goal_sp.pose.position.y + 0.1) > y)
